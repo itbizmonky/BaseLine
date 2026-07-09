@@ -178,6 +178,13 @@ def notify_fetch_error(failed_funds: list[str], today_str: str) -> bool:
     return _send_line_message(msg)
 
 
+def notify_daily_summary(today_str: str, period_info: dict, fund_results: list[dict]) -> bool:
+    """日次の監視サマリー通知を送信する"""
+    msg = build_daily_summary_message(today_str, period_info, fund_results)
+    logger.info("デイリーサマリー通知を送信")
+    return _send_line_message(msg)
+
+
 # ------------------------------------------------------------------
 # スタンドアローン実行（テスト送信用）
 # ------------------------------------------------------------------

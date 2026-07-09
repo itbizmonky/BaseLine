@@ -37,7 +37,7 @@ from judge import (
     is_new_trigger, record_trigger,
     detect_period, calc_trend, calc_remaining_funds,
 )
-from notify import notify_tier_reached, notify_fetch_error
+from notify import notify_tier_reached, notify_fetch_error, notify_daily_summary
 from generate_dashboard import generate
 
 # ロガー設定
@@ -181,6 +181,14 @@ def main(dry_run: bool = False) -> None:
             "trend_5d": trend_5d,
             "trend_20d": trend_20d,
         })
+
+    # ----------------------------------------------------------
+    # 6.5 日次サマリー通知（毎日必ず通知）
+    # ----------------------------------------------------------
+    if not dry_run:
+        notify_daily_summary(today_str, period_info, fund_results)
+    else:
+        logger.info("[DRY RUN] デイリーサマリー通知をスキップ")
 
     # ----------------------------------------------------------
     # 7. データ保存

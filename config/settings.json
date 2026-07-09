@@ -1,0 +1,82 @@
+{
+  "funds": [
+    {
+      "id": "fang",
+      "name": "iFreeNEXT FANG+インデックス",
+      "short_name": "FANG+",
+      "company": "大和アセットマネジメント",
+      "fund_code": "04311181",
+      "tiers": [15, 25, 35],
+      "color": "#f97316",
+      "yahoo_code": "04311181"
+    },
+    {
+      "id": "sox",
+      "name": "ニッセイSOX指数インデックスファンド（米国半導体株）",
+      "short_name": "SOX半導体",
+      "company": "ニッセイアセットマネジメント",
+      "fund_code": "29314233",
+      "tiers": [10, 18, 28],
+      "color": "#a855f7",
+      "yahoo_code": "29314233"
+    },
+    {
+      "id": "sp500",
+      "name": "eMAXIS Slim米国株式（S&P500）",
+      "short_name": "S&P500",
+      "company": "三菱UFJアセットマネジメント",
+      "fund_code": "03311187",
+      "tiers": [7, 12, 18],
+      "color": "#3b82f6",
+      "yahoo_code": "03311187"
+    },
+    {
+      "id": "orkan",
+      "name": "eMAXIS Slim全世界株式（オール・カントリー）",
+      "short_name": "オルカン",
+      "company": "三菱UFJアセットマネジメント",
+      "fund_code": "0331418A",
+      "tiers": [6, 10, 15],
+      "color": "#10b981",
+      "yahoo_code": "0331418A"
+    }
+  ],
+  "periods": {
+    "phase2": {
+      "label": "②期間",
+      "start": "2026-08-01",
+      "end": "2027-02-28"
+    },
+    "phase3": {
+      "label": "③期間",
+      "start": "2027-03-01",
+      "end": "2027-08-31"
+    },
+    "extension_end": "2027-12-31"
+  },
+  "peak_start_date": "2026-08-01",
+  "funds_phase2": {
+    "_comment": "②期間の原資金額設定（円）。tier_amountsは各Tierへの投入予定額",
+    "total": 533049,
+    "tier_amounts": {
+      "fang":  {"tier1": 19989, "tier2": 27985, "tier3": 31983},
+      "sox":   {"tier1": 33316, "tier2": 46642, "tier3": 53305},
+      "sp500": {"tier1": 55970, "tier2": 78358, "tier3": 89552},
+      "orkan": {"tier1": 23987, "tier2": 33582, "tier3": 38380}
+    }
+  },
+  "funds_phase3": {
+    "_comment": "③期間の原資金額設定（円）。上記と同様に設定してください",
+    "total": 533050,
+    "tier_amounts": {
+      "fang":  {"tier1": 19990, "tier2": 27985, "tier3": 31983},
+      "sox":   {"tier1": 33316, "tier2": 46642, "tier3": 53305},
+      "sp500": {"tier1": 55970, "tier2": 78358, "tier3": 89552},
+      "orkan": {"tier1": 23987, "tier2": 33582, "tier3": 38380}
+    }
+  },
+  "notification": {
+    "retry_count": 3,
+    "retry_interval_sec": 30
+  }
+}

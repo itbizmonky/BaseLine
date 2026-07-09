@@ -1,0 +1,84 @@
+name: 暴落監視ダッシュボード 日次実行
+
+on:
+  schedule:
+    # 平日 UTC 22:00 = JST 07:00（月〜金）
+    - cron: '0 22 * * 1-5'
+  workflow_dispatch:
+    # GitHub UI から手動実行ボタン（テスト用）
+    inputs:
+      dry_run:
+        description: 'dry-run（LINE通知スキップ）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write    # data/ と public/ をコミット・プッシュするために必要
+  pages: write       # GitHub Pages へのデプロイに必要
+  id-token: write    # OIDC トークン（Pages デプロイに必要）
+
+jobs:
+  # -------------------------------------------------------
+  # Job 1: 監視スクリプト実行 + データ保存 + HTML生成
+  # -------------------------------------------------------
+  monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 依存ライブラリをインストール
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 監視スクリプト実行
+        run: |
+          DRY_RUN_FLAG=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+          fi
+          python scripts/monitor.py $DRY_RUN_FLAG
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+
+      - name: データファイルとダッシュボードをコミット・プッシュ
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/history.csv data/peak.json data/triggered.json public/index.html
+          # 変更がない場合はコミットをスキップ
+          git diff --staged --quiet || git commit -m "📊 日次更新: $(date -u '+%Y-%m-%d') JST07:00"
+          git push
+
+      - name: GitHub Pages 用アーティファクトをアップロード
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'public/'
+
+  # -------------------------------------------------------
+  # Job 2: GitHub Pages へデプロイ
+  # -------------------------------------------------------
+  deploy:
+    needs: monitor
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: GitHub Pages へデプロイ
+        id: deployment
+        uses: actions/deploy-pages@v4

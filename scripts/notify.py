@@ -83,6 +83,8 @@ def build_tier_message(
     peak_nav: float,
     period_info: dict,
     fund_remaining: dict,
+    decision: str,
+    baseline_ratio: float,
 ) -> str:
     """
     Tier到達時の通知メッセージを生成する（要件 F-10）。
@@ -91,6 +93,7 @@ def build_tier_message(
     tier_emoji = {1: "🟡", 2: "🟠", 3: "🔴"}.get(tier, "⚠️")
     amount = fund_remaining.get("tier_detail", {}).get(f"tier{tier}", {}).get("amount", 0)
     amount_str = f"{amount:,}円" if amount > 0 else "（金額未設定）"
+    decision_emoji = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "HOLD": "⚪ HOLD", "HIGH": "🔴 HIGH"}.get(decision, decision)
 
     msg = (
         f"{tier_emoji} 【暴落アラート】 Tier{tier} 到達！\n"
@@ -99,6 +102,8 @@ def build_tier_message(
         f"📉 下落率: ▲{drawdown:.2f}%\n"
         f"   現在値: {current_nav:,.0f}円\n"
         f"   設定来高値: {peak_nav:,.0f}円\n"
+        f"   基準日比: {baseline_ratio:+.2f}%\n"
+        f"   購入判定: {decision_emoji}\n"
         f"\n"
         f"💰 投入予定額（Tier{tier}）: {amount_str}\n"
         f"📅 現在期間: {period_info.get('label', '-')}\n"
@@ -138,8 +143,9 @@ def build_daily_summary_message(
     lines = [f"📊 【日次監視完了】{today_str}"]
     lines.append(f"現在期間: {period_info.get('label', '-')} / 残{period_info.get('days_remaining', '-')}日\n")
     for r in fund_results:
-        icon = "🟢" if r["tier"] == 0 else {1: "🟡", 2: "🟠", 3: "🔴"}[r["tier"]]
-        lines.append(f"{icon} {r['short_name']}: ▲{r['drawdown']:.2f}% (Tier{r['tier']})")
+        d = r.get("decision", "HOLD")
+        dec_emoji = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "HOLD": "⚪ HOLD", "HIGH": "🔴 HIGH"}.get(d, d)
+        lines.append(f"{dec_emoji} {r['short_name']}: ▲{r['drawdown']:.1f}% (基 {r['baseline_ratio']:+.1f}%) Tier{r['tier']}")
     return "\n".join(lines)
 
 
@@ -155,6 +161,8 @@ def notify_tier_reached(
     peak_nav: float,
     period_info: dict,
     fund_remaining: dict,
+    decision: str,
+    baseline_ratio: float,
 ) -> bool:
     """Tier到達通知を送信する（要件 F-09）"""
     msg = build_tier_message(
@@ -166,6 +174,8 @@ def notify_tier_reached(
         peak_nav=peak_nav,
         period_info=period_info,
         fund_remaining=fund_remaining,
+        decision=decision,
+        baseline_ratio=baseline_ratio,
     )
     logger.info(f"Tier到達通知を送信: {fund['short_name']} Tier{tier}")
     return _send_line_message(msg)

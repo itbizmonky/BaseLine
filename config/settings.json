@@ -75,7 +75,18 @@
       "orkan": {"tier1": 23987, "tier2": 33582, "tier3": 38380}
     }
   },
+  "baseline": {
+    "date": "2026-07-07",
+    "initial_price_tolerance_percent": 5.0,
+    "prices": {
+      "fang": 94387,
+      "sox": 50163,
+      "sp500": 44920,
+      "orkan": 38532
+    }
+  },
   "notification": {
+    "enabled": true,
     "retry_count": 3,
     "retry_interval_sec": 30
   }

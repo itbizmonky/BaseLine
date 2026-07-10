@@ -33,7 +33,7 @@ from judge import (
     load_triggered, save_triggered,
     load_history, append_history,
     update_peak,
-    calc_drawdown, judge_tier,
+    calc_drawdown, judge_tier, calc_baseline_ratio, judge_decision,
     is_new_trigger, record_trigger,
     detect_period, calc_trend, calc_remaining_funds,
 )
@@ -65,6 +65,7 @@ def main(dry_run: bool = False) -> None:
     # ----------------------------------------------------------
     settings = load_settings()
     funds = settings["funds"]
+    notifications_enabled = settings.get("notification", {}).get("enabled", True)
     retry_count = settings["notification"]["retry_count"]
     retry_interval = settings["notification"]["retry_interval_sec"]
 
@@ -87,7 +88,7 @@ def main(dry_run: bool = False) -> None:
             for fid in failed_funds
         ]
         logger.warning(f"取得失敗ファンド: {failed_names}")
-        if not dry_run:
+        if not dry_run and notifications_enabled:
             notify_fetch_error(failed_names, today_str)
 
     # 全銘柄失敗の場合は終了
@@ -142,9 +143,17 @@ def main(dry_run: bool = False) -> None:
         drawdown = calc_drawdown(nav, peak_val)
         tier = judge_tier(drawdown, fund["tiers"])
 
+        # 基準日比・購入判定
+        baseline_nav = settings.get("baseline", {}).get("prices", {}).get(fid, 0)
+        tolerance_pct = settings.get("baseline", {}).get("initial_price_tolerance_percent", 5.0)
+        baseline_ratio = calc_baseline_ratio(nav, baseline_nav)
+        is_hwm = (drawdown == 0.0)
+        decision = judge_decision(tier, nav, baseline_nav, tolerance_pct, is_hwm)
+
         logger.info(
             f"{fund['short_name']}: NAV={nav:,.0f}円 / 高値={peak_val:,.0f}円 / "
-            f"下落率={drawdown:.2f}% / Tier={tier}"
+            f"下落率={drawdown:.2f}% / 基準日比={baseline_ratio:+.2f}% / "
+            f"Tier={tier} / 判定={decision}"
         )
 
         # 新規Tier到達 → LINE通知
@@ -154,7 +163,7 @@ def main(dry_run: bool = False) -> None:
                 phase_key = "phase2"
             remaining = calc_remaining_funds(fid, triggered, phase_key, settings)
 
-            if not dry_run:
+            if not dry_run and notifications_enabled:
                 notify_tier_reached(
                     fund=fund,
                     tier=tier,
@@ -163,9 +172,11 @@ def main(dry_run: bool = False) -> None:
                     peak_nav=peak_val,
                     period_info=period_info,
                     fund_remaining=remaining,
+                    decision=decision,
+                    baseline_ratio=baseline_ratio,
                 )
             else:
-                logger.info(f"[DRY RUN] {fund['short_name']} Tier{tier} 到達通知をスキップ")
+                logger.info(f"[DRY RUN or 通知OFF] {fund['short_name']} Tier{tier} 到達通知をスキップ")
 
             triggered = record_trigger(fid, tier, triggered)
 
@@ -180,15 +191,18 @@ def main(dry_run: bool = False) -> None:
             "drawdown": drawdown,
             "trend_5d": trend_5d,
             "trend_20d": trend_20d,
+            "baseline_nav": baseline_nav,
+            "baseline_ratio": baseline_ratio,
+            "decision": decision,
         })
 
     # ----------------------------------------------------------
-    # 6.5 日次サマリー通知（毎日必ず通知）
+    # 6.5 日次サマリー通知
     # ----------------------------------------------------------
-    if not dry_run:
+    if not dry_run and notifications_enabled:
         notify_daily_summary(today_str, period_info, fund_results)
     else:
-        logger.info("[DRY RUN] デイリーサマリー通知をスキップ")
+        logger.info("[DRY RUN or 通知OFF] デイリーサマリー通知をスキップ")
 
     # ----------------------------------------------------------
     # 7. データ保存

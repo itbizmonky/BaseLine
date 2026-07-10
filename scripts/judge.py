@@ -175,6 +175,40 @@ def judge_tier(drawdown: float, thresholds: list[int]) -> int:
     return tier
 
 
+def calc_baseline_ratio(current_nav: float, baseline_nav: float) -> float:
+    """
+    基準日比（上昇/下落率）を計算する（%で返す）。
+    (現在価格 - 基準日価格) / 基準日価格 * 100
+    """
+    if baseline_nav <= 0:
+        return 0.0
+    return (current_nav - baseline_nav) / baseline_nav * 100
+
+
+def judge_decision(tier: int, current_nav: float, baseline_nav: float, tolerance_pct: float, is_high_water_mark: bool) -> str:
+    """
+    購入判定を行う。
+    - HIGH: 高値更新中
+    - BUY: Tier到達 かつ 基準日価格＋許容上昇率以内
+    - WAIT: Tier到達 だが 基準日価格＋許容上昇率より高い
+    - HOLD: Tier未到達
+    """
+    if is_high_water_mark:
+        return "HIGH"
+    
+    if tier > 0:
+        if baseline_nav > 0:
+            threshold_price = baseline_nav * (1 + tolerance_pct / 100.0)
+            if current_nav <= threshold_price:
+                return "BUY"
+            else:
+                return "WAIT"
+        else:
+            return "BUY"
+    
+    return "HOLD"
+
+
 def is_new_trigger(fund_id: str, current_tier: int, triggered: dict) -> bool:
     """
     新規Tier到達かどうかを判定する（重複通知防止）。

@@ -49,6 +49,43 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def sync_github_workflow(settings: dict) -> None:
+    """settings.json の schedule に基づいて monitor.yml の cron を同期する"""
+    schedule_cfg = settings.get("schedule", {})
+    hour_jst = schedule_cfg.get("hour_jst", 7)
+    minute_jst = schedule_cfg.get("minute_jst", 0)
+    daily = schedule_cfg.get("daily", True)
+
+    # JST(日本時間)をUTC(協定世界時)に変換
+    # 日本時間 7:00 は UTC 22:00 (前日)
+    hour_utc = (hour_jst - 9) % 24
+    minute_utc = minute_jst
+    day_of_week = "*" if daily else "1-5"
+    
+    cron_utc = f"{minute_utc} {hour_utc} * * {day_of_week}"
+
+    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "monitor.yml"
+    if not workflow_path.exists():
+        logger.warning(f"Workflow file not found at {workflow_path}")
+        return
+
+    try:
+        content = workflow_path.read_text(encoding="utf-8")
+        import re
+        pattern = r"- cron:\s*['\"].*?['\"]"
+        replacement = f"- cron: '{cron_utc}'"
+        
+        new_content, count = re.subn(pattern, replacement, content)
+        if count > 0 and new_content != content:
+            workflow_path.write_text(new_content, encoding="utf-8")
+            logger.info(
+                f"Updated GitHub Actions workflow cron schedule to JST {hour_jst:02d}:{minute_jst:02d} "
+                f"(UTC cron: '{cron_utc}')"
+            )
+    except Exception as e:
+        logger.error(f"Failed to sync workflow file: {e}")
+
+
 def main(dry_run: bool = False) -> None:
     """
     メイン実行関数。
@@ -64,7 +101,10 @@ def main(dry_run: bool = False) -> None:
     # 1. 設定読み込み
     # ----------------------------------------------------------
     settings = load_settings()
+    sync_github_workflow(settings)
+    
     funds = settings["funds"]
+    dashboard_url = settings.get("dashboard_url", "https://itbizmonky.github.io/BaseLine/")
     notifications_enabled = settings.get("notification", {}).get("enabled", True)
     retry_count = settings["notification"]["retry_count"]
     retry_interval = settings["notification"]["retry_interval_sec"]
@@ -89,7 +129,7 @@ def main(dry_run: bool = False) -> None:
         ]
         logger.warning(f"取得失敗ファンド: {failed_names}")
         if not dry_run and notifications_enabled:
-            notify_fetch_error(failed_names, today_str)
+            notify_fetch_error(failed_names, today_str, dashboard_url)
 
     # 全銘柄失敗の場合は終了
     if all(v is None for v in navs.values()):
@@ -174,6 +214,7 @@ def main(dry_run: bool = False) -> None:
                     fund_remaining=remaining,
                     decision=decision,
                     baseline_ratio=baseline_ratio,
+                    dashboard_url=dashboard_url,
                 )
             else:
                 logger.info(f"[DRY RUN or 通知OFF] {fund['short_name']} Tier{tier} 到達通知をスキップ")
@@ -200,7 +241,7 @@ def main(dry_run: bool = False) -> None:
     # 6.5 日次サマリー通知
     # ----------------------------------------------------------
     if not dry_run and notifications_enabled:
-        notify_daily_summary(today_str, period_info, fund_results)
+        notify_daily_summary(today_str, period_info, fund_results, dashboard_url)
     else:
         logger.info("[DRY RUN or 通知OFF] デイリーサマリー通知をスキップ")
 

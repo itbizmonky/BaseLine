@@ -85,36 +85,36 @@ def build_tier_message(
     fund_remaining: dict,
     decision: str,
     baseline_ratio: float,
+    dashboard_url: str,
 ) -> str:
     """
     Tier到達時の通知メッセージを生成する（要件 F-10）。
-    銘柄名 / 到達Tier / 下落率 / 投入予定額 / 実行期間（②or③）を含む。
     """
-    tier_emoji = {1: "🟡", 2: "🟠", 3: "🔴"}.get(tier, "⚠️")
+    decision_emoji = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "HOLD": "⚪ HOLD", "HIGH": "🔴 HIGH"}.get(decision, decision)
     amount = fund_remaining.get("tier_detail", {}).get(f"tier{tier}", {}).get("amount", 0)
     amount_str = f"{amount:,}円" if amount > 0 else "（金額未設定）"
-    decision_emoji = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "HOLD": "⚪ HOLD", "HIGH": "🔴 HIGH"}.get(decision, decision)
 
     msg = (
-        f"{tier_emoji} 【暴落アラート】 Tier{tier} 到達！\n"
+        f"🚨 【暴落アラート】 {decision_emoji} {short_name} Tier{tier} 到達！\n"
         f"\n"
         f"📌 銘柄: {fund_name}\n"
-        f"📉 下落率: ▲{drawdown:.2f}%\n"
+        f"📉 最高値比: ▲{drawdown:.2f}%\n"
+        f"📈 基準日比: {baseline_ratio:+.2f}%\n"
         f"   現在値: {current_nav:,.0f}円\n"
         f"   設定来高値: {peak_nav:,.0f}円\n"
-        f"   基準日比: {baseline_ratio:+.2f}%\n"
-        f"   購入判定: {decision_emoji}\n"
         f"\n"
         f"💰 投入予定額（Tier{tier}）: {amount_str}\n"
         f"📅 現在期間: {period_info.get('label', '-')}\n"
         f"   期限まで残り: {period_info.get('days_remaining', '-')}日\n"
+        f"\n"
+        f"💻 詳細ダッシュボード:\n{dashboard_url}\n"
         f"\n"
         f"⚠️ 投資判断は必ずご自身でご確認ください。"
     )
     return msg
 
 
-def build_error_message(failed_funds: list[str], today_str: str) -> str:
+def build_error_message(failed_funds: list[str], today_str: str, dashboard_url: str) -> str:
     """
     データ取得失敗時のエラー通知メッセージを生成する（要件 F-11）。
     """
@@ -126,7 +126,8 @@ def build_error_message(failed_funds: list[str], today_str: str) -> str:
         f"❌ 取得失敗銘柄: {fund_list}\n"
         f"\n"
         f"本日の監視が完了していない可能性があります。\n"
-        f"ダッシュボードで手動確認をお願いします。"
+        f"詳細ダッシュボードで手動確認をお願いします。\n"
+        f"{dashboard_url}"
     )
 
 
@@ -134,18 +135,19 @@ def build_daily_summary_message(
     today_str: str,
     period_info: dict,
     fund_results: list[dict],
+    dashboard_url: str,
 ) -> str:
     """
-    Tier到達がない平常時のデイリーサマリー通知（省略可能・コメントアウト済み）
-    要件には明記されていないため、Tier到達時のみ通知する設計。
-    この関数は将来の拡張用として定義しておく。
+    日次の監視サマリー通知
     """
-    lines = [f"📊 【日次監視完了】{today_str}"]
-    lines.append(f"現在期間: {period_info.get('label', '-')} / 残{period_info.get('days_remaining', '-')}日\n")
+    lines = [f"📊 【日次監視完了】{today_str}\n"]
     for r in fund_results:
         d = r.get("decision", "HOLD")
         dec_emoji = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "HOLD": "⚪ HOLD", "HIGH": "🔴 HIGH"}.get(d, d)
-        lines.append(f"{dec_emoji} {r['short_name']}: ▲{r['drawdown']:.1f}% (基 {r['baseline_ratio']:+.1f}%) Tier{r['tier']}")
+        lines.append(f"{dec_emoji} {r['short_name']}:\n   最高値比: ▲{r['drawdown']:.1f}% / 基準日比: {r['baseline_ratio']:+.1f}% (Tier{r['tier']})")
+    
+    lines.append(f"\n📅 現在期間: {period_info.get('label', '-')} (残{period_info.get('days_remaining', '-')}日)")
+    lines.append(f"💻 詳細ダッシュボード:\n{dashboard_url}")
     return "\n".join(lines)
 
 
@@ -163,6 +165,7 @@ def notify_tier_reached(
     fund_remaining: dict,
     decision: str,
     baseline_ratio: float,
+    dashboard_url: str,
 ) -> bool:
     """Tier到達通知を送信する（要件 F-09）"""
     msg = build_tier_message(
@@ -176,21 +179,22 @@ def notify_tier_reached(
         fund_remaining=fund_remaining,
         decision=decision,
         baseline_ratio=baseline_ratio,
+        dashboard_url=dashboard_url,
     )
     logger.info(f"Tier到達通知を送信: {fund['short_name']} Tier{tier}")
     return _send_line_message(msg)
 
 
-def notify_fetch_error(failed_funds: list[str], today_str: str) -> bool:
+def notify_fetch_error(failed_funds: list[str], today_str: str, dashboard_url: str) -> bool:
     """データ取得エラー通知を送信する（要件 F-11）"""
-    msg = build_error_message(failed_funds, today_str)
+    msg = build_error_message(failed_funds, today_str, dashboard_url)
     logger.info(f"エラー通知を送信: {failed_funds}")
     return _send_line_message(msg)
 
 
-def notify_daily_summary(today_str: str, period_info: dict, fund_results: list[dict]) -> bool:
+def notify_daily_summary(today_str: str, period_info: dict, fund_results: list[dict], dashboard_url: str) -> bool:
     """日次の監視サマリー通知を送信する"""
-    msg = build_daily_summary_message(today_str, period_info, fund_results)
+    msg = build_daily_summary_message(today_str, period_info, fund_results, dashboard_url)
     logger.info("デイリーサマリー通知を送信")
     return _send_line_message(msg)
 

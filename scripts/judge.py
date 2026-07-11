@@ -240,8 +240,8 @@ def detect_period(today: date, settings: dict) -> dict:
 
     Returns:
         {
-            "phase": "phase2" | "phase3" | "extension" | "none",
-            "label": "②期間" | "③期間" | "延長期間" | "監視外期間",
+            "phase": "before_start" | "phase2" | "phase3" | "extension" | "ended" | "none",
+            "label": "監視開始前" | "②期間" | "③期間" | "延長期間" | "監視期間終了" | "監視外期間",
             "days_remaining": int,
             "end_date": date,
         }
@@ -257,7 +257,14 @@ def detect_period(today: date, settings: dict) -> dict:
     p3_end   = parse_date(periods["phase3"]["end"])
     ext_end  = parse_date(periods["extension_end"])
 
-    if p2_start <= today <= p2_end:
+    if today < p2_start:
+        return {
+            "phase": "before_start",
+            "label": "監視開始前",
+            "days_remaining": (p2_start - today).days,
+            "end_date": p2_start,
+        }
+    elif p2_start <= today <= p2_end:
         return {
             "phase": "phase2",
             "label": "②期間",
@@ -278,6 +285,13 @@ def detect_period(today: date, settings: dict) -> dict:
                 "phase": "extension",
                 "label": "延長期間",
                 "days_remaining": (ext_end - today).days,
+                "end_date": ext_end,
+            }
+        else:
+            return {
+                "phase": "ended",
+                "label": "監視期間終了",
+                "days_remaining": 0,
                 "end_date": ext_end,
             }
     return {

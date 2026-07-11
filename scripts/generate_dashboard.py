@@ -120,20 +120,24 @@ def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
         color = fund_colors.get(r["fund_id"], "#ffffff")
         decision = r.get("decision", "HOLD")
         dec_emoji = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "HOLD": "⚪ HOLD", "HIGH": "🔴 HIGH"}.get(decision, decision)
-        
-        dec_style = "color:var(--text);"
-        if decision == "BUY": dec_style = "color:var(--green);font-weight:700;"
-        elif decision == "WAIT": dec_style = "color:var(--yellow);font-weight:700;"
-        elif decision == "HOLD": dec_style = "color:var(--text3);"
-        elif decision == "HIGH": dec_style = "color:var(--red);"
+        dec_label = {"BUY": "購入推奨", "WAIT": "上昇待機", "HOLD": "様子見", "HIGH": "高値更新中"}.get(decision, decision)
+        dec_class = {"BUY": "badge-buy", "WAIT": "badge-wait", "HOLD": "badge-hold", "HIGH": "badge-high"}.get(decision, "badge-hold")
+
+        tier_val = r["tier"]
+        tier_str = f"Tier {tier_val}" if tier_val > 0 else "未到達"
 
         rows.append(
             f'<tr>'
-            f'  <td><span style="color:{color};font-weight:600;">{r["short_name"]}</span></td>'
-            f'  <td><span style="color:var(--red);">▲{r["drawdown"]:.1f}%</span></td>'
+            f'  <td>'
+            f'    <div style="display:flex;align-items:center;gap:8px;">'
+            f'      <span class="fund-dot" style="background-color:{color};box-shadow:0 0 6px {color}"></span>'
+            f'      <span style="font-weight:600;">{r["short_name"]}</span>'
+            f'    </div>'
+            f'  </td>'
+            f'  <td><span class="val-drawdown">-{r["drawdown"]:.1f}%</span></td>'
             f'  <td>{r["baseline_ratio"]:+.1f}%</td>'
-            f'  <td>Tier{r["tier"]}</td>'
-            f'  <td style="{dec_style}">{dec_emoji}</td>'
+            f'  <td><span class="val-tier">{tier_str}</span></td>'
+            f'  <td><span class="status-badge {dec_class}">{dec_emoji} {dec_label}</span></td>'
             f'</tr>'
         )
     return "\n".join(rows)
@@ -153,9 +157,6 @@ def _build_fund_cards(
 ) -> str:
     html_parts = []
     result_map = {r["fund_id"]: r for r in fund_results}
-    phase_key = period_info.get("phase", "phase2")
-    if phase_key not in ("phase2", "phase3"):
-        phase_key = "phase2"
 
     for fund in settings["funds"]:
         fid = fund["id"]
@@ -175,6 +176,7 @@ def _build_fund_cards(
         color = fund["color"]
         
         dec_emoji = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "HOLD": "⚪ HOLD", "HIGH": "🔴 HIGH"}.get(decision, decision)
+        dec_label = {"BUY": "購入推奨", "WAIT": "上昇待機", "HOLD": "様子見", "HIGH": "高値更新中"}.get(decision, decision)
         dec_class = {"BUY": "dec-buy", "WAIT": "dec-wait", "HOLD": "dec-hold", "HIGH": "dec-high"}.get(decision, "dec-hold")
 
         next_tier_text = _next_tier_text(tier, drawdown, tiers)
@@ -183,21 +185,19 @@ def _build_fund_cards(
         peak_str = f"{peak_val:,.0f}円" if peak_val is not None else "未記録"
         baseline_str = f"{baseline_nav:,.0f}円" if baseline_nav > 0 else "未設定"
         
-        drawdown_str = f"▲{drawdown:.1f}%" if nav is not None else "-"
+        drawdown_str = f"-{drawdown:.1f}%" if nav is not None else "-"
         baseline_ratio_str = f"{baseline_ratio:+.1f}%" if nav is not None else "-"
 
         tier_bars = _tier_bars(tier, tiers, color)
 
         card = f"""
-<div class="fund-card {dec_class}-border" style="--fund-color: {color}">
+<div class="fund-card" style="--fund-color: {color}">
   <div class="fund-card__header">
     <div class="fund-card__name-block">
-      <span class="fund-tag" style="background:{color}20;color:{color};border-color:{color}40">{fund['short_name']}</span>
+      <span class="fund-tag" style="border: 1px solid {color}50; color:{color};">{fund['short_name']}</span>
       <div class="fund-card__name">{fund['name']}</div>
     </div>
-    <div class="fund-card__status {dec_class}">
-      {dec_emoji}
-    </div>
+    <div class="status-badge {dec_class}">{dec_emoji} {dec_label}</div>
   </div>
 
   <div class="fund-card__metrics">
@@ -206,22 +206,23 @@ def _build_fund_cards(
       <div class="metric-value">{nav_str}</div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">最高価格</div>
+      <div class="metric-label">設定来最高価格</div>
       <div class="metric-value">{peak_str}</div>
-      <div class="metric-sub">{peak_date}</div>
+      <div class="metric-sub">{peak_date} 記録</div>
     </div>
     <div class="metric-item metric-item--highlight">
-      <div class="metric-label">最高値比</div>
+      <div class="metric-label">最高値からの下落率</div>
       <div class="metric-value drawdown">{drawdown_str}</div>
       <div class="metric-sub">{next_tier_text}</div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
+      <div class="metric-label">判定基準日価格</div>
       <div class="metric-value">{baseline_str}</div>
-      <div class="metric-sub">比: <span style="color:var(--text);">{baseline_ratio_str}</span></div>
+      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">{baseline_ratio_str}</span></div>
     </div>
   </div>
 
+  <div class="tier-indicator-title">購入目安 (Tier) 到達状況</div>
   <div class="tier-progress">
     {tier_bars}
   </div>
@@ -235,8 +236,8 @@ def _next_tier_text(tier: int, drawdown: float, tiers: list) -> str:
     next_tier_idx = tier
     if next_tier_idx < len(tiers):
         gap = tiers[next_tier_idx] - drawdown
-        return f"Tier{next_tier_idx + 1}まであと{gap:.1f}pt"
-    return "Tier3超過済"
+        return f"Tier{next_tier_idx + 1} (-{tiers[next_tier_idx]}%) まであと {gap:.1f}pt"
+    return "Tier3上限超過済"
 
 
 def _tier_bars(tier: int, tiers: list, color: str) -> str:
@@ -245,9 +246,9 @@ def _tier_bars(tier: int, tiers: list, color: str) -> str:
     for i, (label, threshold) in enumerate(zip(labels, tiers), start=1):
         active = "active" if tier >= i else ""
         bars.append(
-            f'<div class="tier-bar {active}" style="{"background:" + color if active else ""}">'
+            f'<div class="tier-bar {active}" style="{"--bar-color:" + color if active else ""}">'
             f'  <span class="tier-bar__label">{label}</span>'
-            f'  <span class="tier-bar__val">▲{threshold}%</span>'
+            f'  <span class="tier-bar__val">-{threshold}%</span>'
             f'</div>'
         )
     return "\n".join(bars)
@@ -263,8 +264,8 @@ def _build_trend_summary(fund_results: list[dict]) -> str:
         items.append(
             f'<div class="trend-item">'
             f'  <span class="trend-name">{r["short_name"]}</span>'
-            f'  <span class="trend-val">5日: {r.get("trend_5d", "→")}</span>'
-            f'  <span class="trend-val">20日: {r.get("trend_20d", "→")}</span>'
+            f'  <span class="trend-val">5日: <span class="trend-icon">{r.get("trend_5d", "→")}</span></span>'
+            f'  <span class="trend-val">20日: <span class="trend-icon">{r.get("trend_20d", "→")}</span></span>'
             f'</div>'
         )
     return "\n".join(items)
@@ -282,7 +283,7 @@ def _build_funds_summary(triggered: dict, period_info: dict, settings: dict) -> 
         rem = calc_remaining_funds(fid, triggered, phase_key, settings)
         rows.append(
             f'<tr>'
-            f'  <td><span style="color:{fund["color"]}">{fund["short_name"]}</span></td>'
+            f'  <td><span style="color:{fund["color"]}; font-weight:600;">{fund["short_name"]}</span></td>'
             f'  <td>{rem["invested"]:,}円</td>'
             f'  <td>{rem["remaining"]:,}円</td>'
             f'  <td>{rem["total"]:,}円</td>'
@@ -307,8 +308,15 @@ def _render_html(
 ) -> str:
     phase_label = period_info.get("label", "-")
     days_remaining = period_info.get("days_remaining", 0)
-    end_date = period_info.get("end_date", "")
     baseline_date = settings.get("baseline", {}).get("date", "2026-07-07")
+    phase_type = period_info.get("phase", "none")
+
+    if phase_type == "before_start":
+        period_display_str = f"📅 状態: 監視開始前 (開始まであと{days_remaining}日)"
+    elif phase_type == "ended":
+        period_display_str = "📅 状態: 監視期間終了"
+    else:
+        period_display_str = f"📅 現在期間: {phase_label} (期限まで残{days_remaining}日)"
 
     return f"""<!DOCTYPE html>
 <html lang="ja">
@@ -317,138 +325,204 @@ def _render_html(
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>投資判断ダッシュボード</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Inter:wght@400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
 /* ===== CSS Reset & Variables ===== */
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
 :root{{
-  --bg:#080c14;--bg-card:#111827;--bg-glass:rgba(17,24,39,.7);
-  --border:rgba(255,255,255,.08);--border-active:rgba(255,255,255,.15);
-  --text:#f1f5f9;--text2:#94a3b8;--text3:#475569;
-  --green:#10b981;--yellow:#f59e0b;--orange:#f97316;--red:#ef4444;
-  --radius:14px;
+  --bg: #0b0d13;
+  --panel-bg: #121622;
+  --shadow-out: 6px 6px 14px #06070a, -6px -6px 14px #1e253a;
+  --shadow-in: inset 3px 3px 8px #06070a, inset -3px -3px 8px #1e253a;
+  --text: #f8fafc;
+  --text-mute: #64748b;
+  --text-dark: #334155;
+  --green: #10b981;
+  --green-glow: 0 0 12px rgba(16, 185, 129, 0.4);
+  --yellow: #f59e0b;
+  --yellow-glow: 0 0 12px rgba(245, 158, 11, 0.4);
+  --red: #ef4444;
+  --red-glow: 0 0 12px rgba(239, 68, 68, 0.4);
+  --blue: #3b82f6;
+  --radius: 20px;
+  --inner-radius: 10px;
 }}
 html{{scroll-behavior:smooth}}
 body{{
   font-family:'Noto Sans JP','Inter',sans-serif;
   background:var(--bg);color:var(--text);min-height:100vh;
   background-image:
-    radial-gradient(ellipse at 10% 10%,rgba(59,130,246,.07) 0%,transparent 50%),
-    radial-gradient(ellipse at 90% 80%,rgba(139,92,246,.05) 0%,transparent 50%);
+    radial-gradient(circle at 10% 15%, rgba(59,130,246,0.06) 0%, transparent 40%),
+    radial-gradient(circle at 90% 85%, rgba(139,92,246,0.04) 0%, transparent 40%);
+  padding-bottom: 40px;
 }}
 
 /* ===== Header ===== */
 .header{{
-  background:rgba(8,12,20,.9);backdrop-filter:blur(20px);
-  border-bottom:1px solid var(--border);padding:12px 16px;
-  position:sticky;top:0;z-index:100;
+  background: rgba(11, 13, 19, 0.85); backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03); padding: 16px 20px;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }}
-.header-inner{{max-width:900px;margin:0 auto;}}
-.header-title{{font-size:16px;font-weight:700;}}
-.header-sub{{font-size:12px;color:var(--text2);margin-top:2px;}}
+.header-inner{{
+  max-width: 900px; margin: 0 auto;
+  display: flex; justify-content: space-between; align-items: center;
+}}
+.header-title{{
+  font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  display: flex; align-items: center; gap: 8px;
+}}
+.header-sub{{
+  font-size: 12px; color: var(--text-mute); text-align: right; line-height: 1.5;
+}}
 
-/* ===== Main ===== */
-.main{{max-width:900px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px;}}
+/* ===== Main Layout ===== */
+.main{{ max-width: 900px; margin: 0 auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 24px; }}
 
-/* ===== Section Title ===== */
+/* ===== Section Panels (Neumorphism) ===== */
+.section-panel{{
+  background: var(--panel-bg); box-shadow: var(--shadow-out); border-radius: var(--radius);
+  padding: 24px; border: 1px solid rgba(255, 255, 255, 0.02);
+}}
 .section-title{{
-  font-size:14px;font-weight:700;color:var(--text);
-  display:flex;align-items:center;gap:8px;margin-bottom:12px;
+  font-size: 15px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+  border-left: 4px solid var(--blue); padding-left: 10px;
 }}
 
-/* ===== Summary Table ===== */
-.summary-section{{background:var(--bg-glass);border:1px solid var(--border);border-radius:var(--radius);padding:16px;}}
-.summary-table{{width:100%;border-collapse:collapse;font-size:13px;}}
+/* ===== Accordion Guide Panel ===== */
+.guide-toggle{{
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  background: var(--panel-bg); box-shadow: var(--shadow-out); border: 1px solid rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius); padding: 16px 24px; color: var(--text); font-size: 14px;
+  font-weight: 700; cursor: pointer; text-align: left; transition: all 0.2s;
+}}
+.guide-toggle:hover{{ background: rgba(255,255,255,0.02); }}
+.guide-content{{
+  max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+  background: rgba(18, 22, 34, 0.5); border-radius: 0 0 var(--radius) var(--radius);
+  padding: 0 24px; box-shadow: inset 0 4px 10px rgba(0,0,0,0.2);
+}}
+.guide-grid{{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
+.guide-item{{ font-size: 12px; line-height: 1.8; color: var(--text-mute); }}
+.guide-item h4{{ font-size: 13px; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }}
+.guide-item ul{{ list-style: none; }}
+.guide-item li{{ margin-bottom: 10px; }}
+.guide-item code{{ background: #000; padding: 2px 5px; border-radius: 4px; color: var(--red); font-family: monospace; }}
+.toggle-icon{{ transition: transform 0.3s; font-size: 10px; }}
+
+/* ===== Status Badges & Glows ===== */
+.status-badge{{
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  border: 1px solid transparent; background: rgba(255,255,255,0.03);
+}}
+.badge-buy, .dec-buy{{ background: rgba(16,185,129,0.15); color: var(--green); border-color: rgba(16,185,129,0.3); box-shadow: var(--green-glow); }}
+.badge-wait, .dec-wait{{ background: rgba(245,158,11,0.15); color: var(--yellow); border-color: rgba(245,158,11,0.3); box-shadow: var(--yellow-glow); }}
+.badge-hold, .dec-hold{{ background: rgba(255,255,255,0.05); color: var(--text-mute); border-color: rgba(255,255,255,0.05); }}
+.badge-high, .dec-high{{ background: rgba(239,68,68,0.15); color: var(--red); border-color: rgba(239,68,68,0.3); box-shadow: var(--red-glow); }}
+
+/* ===== Neumorphic Table ===== */
+.table-wrapper{{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--radius); padding: 12px; overflow-x: auto; }}
+.summary-table{{ width: 100%; border-collapse: collapse; font-size: 13px; min-width: 500px; }}
 .summary-table th{{
-  text-align:left;padding:8px 10px;color:var(--text3);
-  font-size:11px;font-weight:600;border-bottom:1px solid var(--border);
+  text-align: left; padding: 10px 12px; color: var(--text-mute);
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
 }}
-.summary-table td{{padding:12px 10px;border-bottom:1px solid rgba(255,255,255,.04);font-family:'Inter',monospace;}}
-.summary-table td:first-child{{font-family:'Noto Sans JP',sans-serif;}}
+.summary-table td{{ padding: 14px 12px; border-bottom: 1px solid rgba(255,255,255,0.02); font-family: 'Inter', monospace; }}
+.summary-table tr:last-child td{{ border-bottom: none; }}
+.summary-table td:first-child{{ font-family: 'Noto Sans JP', sans-serif; }}
+.fund-dot{{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; }}
+.val-drawdown{{ color: var(--red); font-weight: 700; }}
+.val-tier{{ font-weight: 600; color: var(--blue); }}
 
-/* ===== Fund Card ===== */
+/* ===== Fund Cards ===== */
 .fund-card{{
-  background:var(--bg-glass);backdrop-filter:blur(20px);
-  border:1px solid var(--border);border-radius:var(--radius);
-  padding:18px;position:relative;overflow:hidden;
-  border-top:3px solid var(--fund-color,#3b82f6);
-  transition:transform .2s,box-shadow .2s;
+  background: var(--panel-bg); box-shadow: var(--shadow-out); border-radius: var(--radius);
+  padding: 24px; border: 1px solid rgba(255, 255, 255, 0.02);
+  transition: transform 0.2s, box-shadow 0.2s;
+  border-left: 5px solid var(--fund-color, #3b82f6);
 }}
-.fund-card:hover{{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3);}}
-.fund-card__header{{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;}}
+.fund-card:hover{{ transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }}
+.fund-card__header{{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }}
 .fund-tag{{
-  display:inline-block;padding:2px 10px;border-radius:999px;
-  font-size:11px;font-weight:700;border:1px solid;margin-bottom:4px;
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; background: rgba(255,255,255,0.02);
+  font-family: 'Outfit', sans-serif;
 }}
-.fund-card__name{{font-size:14px;font-weight:600;line-height:1.4;}}
-.fund-card__status{{
-  flex-shrink:0;font-size:14px;font-weight:700;text-align:right;
-  white-space:nowrap;padding:6px 12px;border-radius:8px;
-}}
-.dec-buy {{ background: rgba(16,185,129,.15); color: var(--green); }}
-.dec-wait {{ background: rgba(245,158,11,.15); color: var(--yellow); }}
-.dec-hold {{ background: rgba(255,255,255,.05); color: var(--text3); }}
-.dec-high {{ background: rgba(239,68,68,.15); color: var(--red); }}
+.fund-card__name{{ font-size: 15px; font-weight: 700; margin-top: 4px; }}
+.fund-card__metrics{{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }}
+.metric-item{{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--inner-radius); padding: 12px; }}
+.metric-item--highlight{{ border: 1px solid rgba(239, 68, 68, 0.2); }}
+.metric-label{{ font-size: 9px; color: var(--text-mute); font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }}
+.metric-value{{ font-size: 16px; font-weight: 700; font-family: 'Inter', monospace; }}
+.metric-value.drawdown{{ color: var(--red); text-shadow: 0 0 8px rgba(239,68,68,0.2); }}
+.metric-sub{{ font-size: 10px; color: var(--text-mute); margin-top: 4px; }}
 
-.dec-buy-border {{ border-color: rgba(16,185,129,.3); }}
-.dec-wait-border {{ border-color: rgba(245,158,11,.3); }}
-.dec-high-border {{ border-color: rgba(239,68,68,.3); }}
-
-/* ===== Metrics ===== */
-.fund-card__metrics{{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;}}
-.metric-item{{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:10px;}}
-.metric-item--highlight{{border-color:rgba(239,68,68,.3);}}
-.metric-label{{font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;margin-bottom:4px;}}
-.metric-value{{font-size:18px;font-weight:700;font-family:'Inter',monospace;}}
-.metric-value.drawdown{{color:var(--red);}}
-.metric-sub{{font-size:11px;color:var(--text2);margin-top:3px;}}
-
-/* ===== Tier Progress ===== */
-.tier-progress{{display:flex;gap:6px;}}
+/* ===== Tier Progress Indicators ===== */
+.tier-indicator-title{{ font-size: 11px; font-weight: 700; color: var(--text-mute); margin-bottom: 8px; text-transform: uppercase; }}
+.tier-progress{{ display: flex; gap: 10px; }}
 .tier-bar{{
-  flex:1;padding:5px 8px;border-radius:6px;
-  background:rgba(255,255,255,.04);border:1px solid var(--border);
-  display:flex;justify-content:space-between;align-items:center;
-  font-size:10px;color:var(--text3);transition:all .2s;
+  flex: 1; padding: 8px 12px; border-radius: 8px;
+  background: #080a0e; box-shadow: var(--shadow-in);
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; color: var(--text-mute); transition: all 0.3s;
+  border: 1px solid transparent;
 }}
-.tier-bar.active{{color:#fff;font-weight:700;border-color:transparent;}}
-.tier-bar__label{{font-weight:600;}}
-.tier-bar__val{{opacity:.8;}}
-
-/* ===== Other Sections ===== */
-.trend-section, .funds-section, .chart-section {{
-  background:var(--bg-glass);border:1px solid var(--border);border-radius:var(--radius);padding:16px;
+.tier-bar.active{{
+  color: #fff; font-weight: 700;
+  background: var(--bar-color); border-color: transparent;
+  box-shadow: 0 0 10px var(--bar-color);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }}
-.trend-grid{{display:flex;flex-wrap:wrap;gap:8px;}}
-.trend-item{{
-  display:flex;align-items:center;gap:8px;
-  background:rgba(255,255,255,.03);border:1px solid var(--border);
-  border-radius:8px;padding:8px 12px;flex:1;min-width:160px;
-}}
-.trend-name{{font-size:12px;font-weight:600;color:var(--text2);flex:1;}}
-.trend-val{{font-size:14px;font-weight:600;font-family:'Inter',monospace;}}
+.tier-bar__label{{ font-family: 'Outfit', sans-serif; }}
+.tier-bar__val{{ font-family: 'Inter', monospace; font-weight: 700; }}
 
-.funds-table{{width:100%;border-collapse:collapse;font-size:13px;}}
-.funds-table th{{text-align:left;padding:6px 10px;color:var(--text3);font-size:11px;font-weight:600;border-bottom:1px solid var(--border);}}
-.funds-table td{{padding:10px;border-bottom:1px solid rgba(255,255,255,.04);font-family:'Inter',monospace;}}
-.funds-table td:first-child{{font-family:'Noto Sans JP',sans-serif;}}
-
-.chart-tabs{{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}}
+/* ===== Trend & Chart Panels ===== */
+.chart-tabs{{ display: flex; gap: 8px; margin-bottom: 16px; }}
 .chart-tab{{
-  padding:5px 12px;border-radius:6px;border:1px solid var(--border);
-  background:transparent;color:var(--text2);font-size:12px;font-family:inherit;
-  cursor:pointer;transition:all .15s;
+  padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.02);
+  background: var(--panel-bg); box-shadow: var(--shadow-out); color: var(--text-mute);
+  font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }}
-.chart-tab.active{{background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.4);color:#60a5fa;}}
-.chart-wrapper{{position:relative;height:260px;}}
-.footer{{text-align:center;padding:20px;font-size:11px;color:var(--text3);border-top:1px solid var(--border);}}
+.chart-tab.active{{
+  background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.3);
+  color: #60a5fa; box-shadow: 0 0 10px rgba(59,130,246,0.15);
+}}
+.chart-wrapper{{ position: relative; height: 260px; background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--radius); padding: 12px; }}
 
-@media(max-width:500px){{
-  .fund-card__metrics{{grid-template-columns:1fr 1fr;}}
-  .metric-value{{font-size:15px;}}
-  .trend-item{{min-width:100%;}}
-  .summary-table td, .summary-table th {{ padding:8px 4px; font-size:11px; }}
+.trend-grid{{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }}
+.trend-item{{
+  background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--inner-radius);
+  padding: 12px; display: flex; flex-direction: column; gap: 4px;
+}}
+.trend-name{{ font-size: 11px; font-weight: 700; color: var(--text-mute); }}
+.trend-val{{ font-size: 12px; font-family: 'Inter', monospace; color: var(--text); }}
+.trend-icon{{ font-weight: 700; color: var(--blue); }}
+
+.funds-table{{ width:100%; border-collapse:collapse; font-size:13px; }}
+.funds-table th{{ text-align:left; padding:10px; color:var(--text-mute); font-size:11px; font-weight:600; border-bottom:1px solid rgba(255,255,255,0.02); }}
+.funds-table td{{ padding:12px 10px; border-bottom:1px solid rgba(255,255,255,0.02); font-family:'Inter',monospace; }}
+.funds-table tr:last-child td{{ border-bottom: none; }}
+.funds-table td:first-child{{ font-family:'Noto Sans JP',sans-serif; }}
+
+/* ===== Footer ===== */
+.footer{{ text-align: center; padding: 30px; font-size: 11px; color: var(--text-mute); border-top: 1px solid rgba(255, 255, 255, 0.02); margin-top: 40px; }}
+
+@media(max-width: 768px){{
+  .fund-card__metrics{{ grid-template-columns: 1fr 1fr; }}
+  .trend-grid{{ grid-template-columns: 1fr 1fr; }}
+  .guide-grid{{ grid-template-columns: 1fr; }}
+}}
+@media(max-width: 480px){{
+  .header-inner{{ flex-direction: column; gap: 8px; text-align: center; }}
+  .header-sub{{ text-align: center; }}
+  .summary-table th, .summary-table td{{ padding: 10px 6px; font-size: 11px; }}
+  .tier-progress{{ flex-direction: column; gap: 6px; }}
+  .metric-value{{ font-size: 14px; }}
 }}
 </style>
 </head>
@@ -456,42 +530,76 @@ body{{
 
 <header class="header">
   <div class="header-inner">
-    <div class="header-title">💡 投資判断ダッシュボード</div>
-    <div class="header-sub">最終更新：{today_str} JST &nbsp;｜&nbsp; 基準日：{baseline_date}</div>
+    <div class="header-title">🛡️ VALOR SHIELD <span style="font-weight:400; font-size:14px; color:var(--text-mute); margin-left:4px;">暴落監視</span></div>
+    <div class="header-sub">
+      更新: {today_str} JST &nbsp;｜&nbsp; 基準日: {baseline_date}<br>
+      <span style="color:var(--blue); font-weight:600;">{period_display_str}</span>
+    </div>
   </div>
 </header>
 
 <main class="main">
 
-  <!-- ===== 総合サマリー ===== -->
-  <section class="summary-section">
-    <div class="section-title">今日の投資判断</div>
-    <table class="summary-table">
-      <thead>
-        <tr>
-          <th>銘柄</th>
-          <th>最高値比</th>
-          <th>基準日比</th>
-          <th>Tier</th>
-          <th>判定</th>
-        </tr>
-      </thead>
-      <tbody>
-        {summary_html}
-      </tbody>
-    </table>
+  <!-- ===== 投資判断クイックガイド (アコーディオン) ===== -->
+  <section class="guide-section">
+    <button class="guide-toggle" id="guideToggle">
+      <span>💡 投資シグナルとルールの見方 (初心者向けガイド)</span>
+      <span class="toggle-icon" style="display:inline-block; transition:transform 0.2s;">▼</span>
+    </button>
+    <div class="guide-content" id="guideContent">
+      <div class="guide-grid" style="padding: 16px 0;">
+        <div class="guide-item">
+          <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🟢 シグナル(判定)の読み方</h4>
+          <ul style="padding-left: 0;">
+            <li style="margin-bottom:8px;"><span class="status-badge badge-buy">🟢 BUY</span> <strong>購入推奨:</strong> 目安の下落率(Tier)に到達し、現在価格が基準日から暴騰していない状態。</li>
+            <li style="margin-bottom:8px;"><span class="status-badge badge-wait">🟡 WAIT</span> <strong>上昇待機:</strong> 下落目安には達していますが、判定基準価格(直近安値付近)から価格が少し上昇(+5.0%超)しているため、手動注文の前に一時様子見を推奨する状態。</li>
+            <li style="margin-bottom:8px;"><span class="status-badge badge-hold">⚪ HOLD</span> <strong>様子見:</strong> 下落率が小さく、購入目安に達していない平常の状態。</li>
+            <li style="margin-bottom:8px;"><span class="status-badge badge-high">🔴 HIGH</span> <strong>高値更新中:</strong> 設定来高値を本日更新した、または高値圏を維持している絶好調の状態。</li>
+          </ul>
+        </div>
+        <div class="guide-item">
+          <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">📐 暴落判定ルール</h4>
+          <ul style="padding-left: 0;">
+            <li style="margin-bottom:8px;"><strong>最高値からの下落率:</strong> 2026年8月以降に記録した最高値から、現在の価格が何％下がっているかを表します（例: <code>-15.0%</code>）。この下落が設定した各Tierに達するとシグナルが発動します。</li>
+            <li style="margin-bottom:8px;"><strong>判定基準価格:</strong> 暴落初期や安値時の価格を基準とし、そこから<code>+5.0%</code>以上価格が急上昇した場合は、高値掴みを避けるため一時的に <code>WAIT</code> と判定されます。</li>
+            <li style="margin-bottom:8px;"><strong>注意:</strong> 実際の買付注文は、SBI証券等の画面から手動で発注する必要があります。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
   </section>
 
-  <!-- ===== 銘柄カード ===== -->
+  <!-- ===== 総合サマリー ===== -->
+  <section class="section-panel">
+    <div class="section-title">投資意思決定サマリー</div>
+    <div class="table-wrapper">
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>監視銘柄</th>
+            <th>最高値比 (下落率)</th>
+            <th>基準日比 (上昇率)</th>
+            <th>到達段階</th>
+            <th>システム判定</th>
+          </tr>
+        </thead>
+        <tbody>
+          {summary_html}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== 銘柄詳細カード ===== -->
   {cards_html}
 
   <!-- ===== 推移チャート ===== -->
-  <section class="chart-section">
-    <div class="section-title">📈 基準価額推移チャート</div>
+  <section class="section-panel">
+    <div class="section-title">基準価額の推移とTier閾値</div>
     <div class="chart-tabs" id="chartTabs">
       <button class="chart-tab active" data-fund="all">全銘柄</button>
       <button class="chart-tab" data-fund="fang">FANG+</button>
-      <button class="chart-tab" data-fund="sox">SOX</button>
+      <button class="chart-tab" data-fund="sox">SOX半導体</button>
       <button class="chart-tab" data-fund="sp500">S&P500</button>
       <button class="chart-tab" data-fund="orkan">オルカン</button>
     </div>
@@ -501,35 +609,37 @@ body{{
   </section>
 
   <!-- ===== トレンドサマリー ===== -->
-  <section class="trend-section">
-    <div class="section-title">📊 直近トレンド</div>
+  <section class="section-panel">
+    <div class="section-title">直近モメンタム (トレンド)</div>
     <div class="trend-grid">
       {trend_html}
     </div>
   </section>
 
   <!-- ===== 残資金サマリー ===== -->
-  <section class="funds-section">
-    <div class="section-title">💰 資金状況（{phase_label}：残{days_remaining}日）</div>
-    <table class="funds-table">
-      <thead>
-        <tr>
-          <th>銘柄</th>
-          <th>投入済</th>
-          <th>残り</th>
-          <th>原資合計</th>
-        </tr>
-      </thead>
-      <tbody>
-        {funds_html}
-      </tbody>
-    </table>
+  <section class="section-panel">
+    <div class="section-title">資金投入管理状況 &nbsp;<span style="font-size:12px; font-weight:normal; color:var(--text-mute);">({phase_label})</span></div>
+    <div class="table-wrapper">
+      <table class="funds-table">
+        <thead>
+          <tr>
+            <th>銘柄</th>
+            <th>投入済金額</th>
+            <th>残枠資金</th>
+            <th>原資合計</th>
+          </tr>
+        </thead>
+        <tbody>
+          {funds_html}
+        </tbody>
+      </table>
+    </div>
   </section>
 
 </main>
 
 <footer class="footer">
-  <p>データ出典：日経新聞 投資信託情報 ｜ 投資判断は自己責任でお願いします</p>
+  <p>データ出典：Yahoo!ファイナンス ｜ 本ダッシュボードは投資判断の支援のみを行います。投資は自己責任で行ってください。</p>
 </footer>
 
 <script>
@@ -537,15 +647,31 @@ const RAW_DATA = {chart_data_json};
 
 let chartInstance = null;
 
+// アコーディオンの開閉制御
+const toggle = document.getElementById('guideToggle');
+const content = document.getElementById('guideContent');
+const icon = toggle.querySelector('.toggle-icon');
+toggle.addEventListener('click', () => {{
+  if (content.style.maxHeight && content.style.maxHeight !== '0px') {{
+    content.style.maxHeight = '0px';
+    icon.style.transform = 'rotate(0deg)';
+  }} else {{
+    content.style.maxHeight = content.scrollHeight + 'px';
+    icon.style.transform = 'rotate(180deg)';
+  }}
+}});
+
 function buildDatasets(fundFilter) {{
   return RAW_DATA.datasets
     .filter(ds => fundFilter === 'all' || ds.id === fundFilter)
     .map(ds => ({{
       ...ds,
-      borderWidth: 2,
+      borderWidth: 2.5,
       pointRadius: 0,
-      pointHoverRadius: 5,
-      tension: 0.3,
+      pointHoverRadius: 6,
+      tension: 0.25,
+      shadowColor: ds.borderColor,
+      shadowBlur: 8,
     }}));
 }}
 
@@ -559,24 +685,52 @@ function renderChart(fundFilter = 'all') {{
     return;
   }}
 
+  // カスタムプラグインで線の発光エフェクトを描画
+  const shadowPlugin = {{
+    id: 'shadowPlugin',
+    beforeDatasetsDraw(chart, args, options) {{
+      const {{ ctx }} = chart;
+      ctx.save();
+      chart.data.datasets.forEach((dataset, index) => {{
+        const meta = chart.getDatasetMeta(index);
+        if (!meta.hidden && dataset.shadowBlur > 0) {{
+          ctx.shadowColor = dataset.shadowColor;
+          ctx.shadowBlur = dataset.shadowBlur;
+        }}
+      }});
+    }},
+    afterDatasetsDraw(chart, args, options) {{
+      chart.ctx.restore();
+    }}
+  }};
+
   chartInstance = new Chart(ctx, {{
     type: 'line',
     data: {{
       labels: RAW_DATA.labels,
       datasets,
     }},
+    plugins: [shadowPlugin],
     options: {{
       responsive: true,
       maintainAspectRatio: false,
-      animation: {{ duration: 400 }},
+      animation: {{ duration: 500, easing: 'easeOutQuart' }},
       interaction: {{ mode: 'index', intersect: false }},
       plugins: {{
-        legend: {{ display: fundFilter === 'all', position: 'top',
-          labels: {{ color: '#94a3b8', font: {{ size: 11 }}, boxWidth: 14 }} }},
+        legend: {{ 
+          display: fundFilter === 'all', 
+          position: 'top',
+          labels: {{ color: '#94a3b8', font: {{ size: 11, family: 'Inter' }}, boxWidth: 12, usePointStyle: true }} 
+        }},
         tooltip: {{
-          backgroundColor: 'rgba(13,18,32,.95)',
-          titleColor: '#94a3b8', bodyColor: '#f1f5f9',
-          borderColor: 'rgba(255,255,255,.1)', borderWidth: 1,
+          backgroundColor: 'rgba(11, 13, 20, 0.95)',
+          titleColor: '#94a3b8', 
+          bodyColor: '#f8fafc',
+          borderColor: 'rgba(255,255,255,0.08)', 
+          borderWidth: 1,
+          padding: 10,
+          bodyFont: {{ family: 'Inter' }},
+          titleFont: {{ family: 'Inter' }},
           callbacks: {{
             label: (item) => `  ${{item.dataset.label}}: ${{item.raw !== null ? item.raw.toLocaleString() + '円' : '-'}}`,
           }},
@@ -584,13 +738,16 @@ function renderChart(fundFilter = 'all') {{
       }},
       scales: {{
         x: {{
-          grid: {{ color: 'rgba(255,255,255,.04)' }},
-          ticks: {{ color: '#475569', font: {{ size: 10 }}, maxTicksLimit: 8 }},
+          grid: {{ color: 'rgba(255,255,255,0.02)' }},
+          ticks: {{ color: '#64748b', font: {{ size: 9, family: 'Inter' }}, maxTicksLimit: 10 }},
         }},
         y: {{
-          grid: {{ color: 'rgba(255,255,255,.04)' }},
-          ticks: {{ color: '#475569', font: {{ size: 10 }},
-            callback: (v) => v !== null ? v.toLocaleString() + '円' : '' }},
+          grid: {{ color: 'rgba(255,255,255,0.02)' }},
+          ticks: {{ 
+            color: '#64748b', 
+            font: {{ size: 9, family: 'Inter' }},
+            callback: (v) => v !== null ? v.toLocaleString() + '円' : '' 
+          }},
         }},
       }},
     }},

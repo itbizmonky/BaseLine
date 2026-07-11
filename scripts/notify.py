@@ -94,18 +94,26 @@ def build_tier_message(
     amount = fund_remaining.get("tier_detail", {}).get(f"tier{tier}", {}).get("amount", 0)
     amount_str = f"{amount:,}円" if amount > 0 else "（金額未設定）"
 
+    days_rem = period_info.get('days_remaining', '-')
+    if period_info.get('phase') == 'before_start':
+        period_days_str = f"   開始まであと: {days_rem}日"
+    elif period_info.get('phase') == 'ended':
+        period_days_str = "   監視期間終了"
+    else:
+        period_days_str = f"   期限まで残り: {days_rem}日"
+
     msg = (
         f"🚨 【暴落アラート】 {decision_emoji} {short_name} Tier{tier} 到達！\n"
         f"\n"
         f"📌 銘柄: {fund_name}\n"
-        f"📉 最高値比: ▲{drawdown:.2f}%\n"
+        f"📉 最高値比: -{drawdown:.2f}%\n"
         f"📈 基準日比: {baseline_ratio:+.2f}%\n"
         f"   現在値: {current_nav:,.0f}円\n"
         f"   設定来高値: {peak_nav:,.0f}円\n"
         f"\n"
         f"💰 投入予定額（Tier{tier}）: {amount_str}\n"
         f"📅 現在期間: {period_info.get('label', '-')}\n"
-        f"   期限まで残り: {period_info.get('days_remaining', '-')}日\n"
+        f"{period_days_str}\n"
         f"\n"
         f"💻 詳細ダッシュボード:\n{dashboard_url}\n"
         f"\n"
@@ -144,9 +152,20 @@ def build_daily_summary_message(
     for r in fund_results:
         d = r.get("decision", "HOLD")
         dec_emoji = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "HOLD": "⚪ HOLD", "HIGH": "🔴 HIGH"}.get(d, d)
-        lines.append(f"{dec_emoji} {r['short_name']}:\n   最高値比: ▲{r['drawdown']:.1f}% / 基準日比: {r['baseline_ratio']:+.1f}% (Tier{r['tier']})")
+        tier_val = r.get("tier", 0)
+        tier_str = f"Tier{tier_val}" if tier_val > 0 else "Tier未到達"
+        lines.append(f"{dec_emoji} {r['short_name']}:\n   最高値比: -{r['drawdown']:.1f}% / 基準日比: {r['baseline_ratio']:+.1f}% ({tier_str})")
     
-    lines.append(f"\n📅 現在期間: {period_info.get('label', '-')} (残{period_info.get('days_remaining', '-')}日)")
+    phase_type = period_info.get('phase', 'none')
+    days_rem = period_info.get('days_remaining', '-')
+    if phase_type == 'before_start':
+        period_str = f"{period_info.get('label', '-')} (開始まであと{days_rem}日)"
+    elif phase_type == 'ended':
+        period_str = f"{period_info.get('label', '-')}"
+    else:
+        period_str = f"{period_info.get('label', '-')} (残{days_rem}日)"
+        
+    lines.append(f"\n📅 現在期間: {period_str}")
     lines.append(f"💻 詳細ダッシュボード:\n{dashboard_url}")
     return "\n".join(lines)
 

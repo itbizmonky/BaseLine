@@ -151,10 +151,11 @@ def calc_drawdown(current_nav: float, peak_nav: float) -> float:
     """
     下落率を計算する（%で返す）。
     下落率 = (設定来高値 - 当日基準価額) / 設定来高値 × 100
+    現在値が設定来高値以上（高値更新中）の場合は 0.0 を返す（下落率はマイナスになり得ない）。
     """
     if peak_nav <= 0:
         return 0.0
-    return (peak_nav - current_nav) / peak_nav * 100
+    return max(0.0, (peak_nav - current_nav) / peak_nav * 100)
 
 
 def judge_tier(drawdown: float, thresholds: list[int]) -> int:
@@ -375,6 +376,37 @@ def calc_remaining_funds(fund_id: str, triggered: dict, phase_key: str, settings
         "total": total,
         "tier_detail": tier_detail,
     }
+
+
+# ------------------------------------------------------------------
+# 判定(BUY/WAIT/HOLD/HIGH) 表示情報
+# ------------------------------------------------------------------
+
+DECISION_INFO = {
+    "BUY":  {"emoji": "🟢", "tag": "BUY",  "label": "購入推奨",   "css": "buy"},
+    "WAIT": {"emoji": "🟡", "tag": "WAIT", "label": "上昇待機",   "css": "wait"},
+    "HOLD": {"emoji": "⚪", "tag": "HOLD", "label": "様子見",     "css": "hold"},
+    "HIGH": {"emoji": "🔵", "tag": "HIGH", "label": "高値更新中", "css": "high"},
+}
+
+
+def format_drawdown(drawdown: float, decimals: int = 1) -> str:
+    """
+    下落率を表示用文字列に整形する。
+    calc_drawdown() は0未満を返さないため、0の場合は符号なし（"0.0%"）で表示し、
+    "-0.0%" のような紛らわしい表記を避ける。
+    """
+    if drawdown <= 0:
+        return f"{drawdown:.{decimals}f}%"
+    return f"-{drawdown:.{decimals}f}%"
+
+
+def decision_display(decision: str) -> dict:
+    """
+    判定(BUY/WAIT/HOLD/HIGH)ごとの絵文字・英語タグ・日本語ラベル・CSSクラス接尾辞を
+    まとめて返す（notify.py / generate_dashboard.py で共通利用）。
+    """
+    return DECISION_INFO.get(decision, {"emoji": "", "tag": decision, "label": decision, "css": "hold"})
 
 
 # ------------------------------------------------------------------

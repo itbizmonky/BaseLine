@@ -103,7 +103,7 @@ body{
 .badge-buy, .dec-buy{ background: rgba(16,185,129,0.15); color: var(--green); border-color: rgba(16,185,129,0.3); box-shadow: var(--green-glow); }
 .badge-wait, .dec-wait{ background: rgba(245,158,11,0.15); color: var(--yellow); border-color: rgba(245,158,11,0.3); box-shadow: var(--yellow-glow); }
 .badge-hold, .dec-hold{ background: rgba(255,255,255,0.05); color: var(--text-mute); border-color: rgba(255,255,255,0.05); }
-.badge-high, .dec-high{ background: rgba(239,68,68,0.15); color: var(--red); border-color: rgba(239,68,68,0.3); box-shadow: var(--red-glow); }
+.badge-high, .dec-high{ background: rgba(59,130,246,0.15); color: var(--blue); border-color: rgba(59,130,246,0.3); box-shadow: 0 0 12px rgba(59,130,246,0.4); }
 
 /* ===== Neumorphic Table ===== */
 .table-wrapper{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--radius); padding: 12px; overflow-x: auto; }
@@ -212,8 +212,8 @@ body{
   <div class="header-inner">
     <div class="header-title">🛡️ VALOR SHIELD <span style="font-weight:400; font-size:14px; color:var(--text-mute); margin-left:4px;">暴落監視</span></div>
     <div class="header-sub">
-      更新: 2026-07-12 JST &nbsp;｜&nbsp; 基準日: 2026-07-07<br>
-      <span style="color:var(--blue); font-weight:600;">📅 状態: 監視開始前 (開始まであと20日)</span>
+      更新: 2026-07-13 JST &nbsp;｜&nbsp; 基準日: 2026-07-07<br>
+      <span style="color:var(--blue); font-weight:600;">📅 状態: 監視開始前 (開始まであと19日)</span>
     </div>
   </div>
 </header>
@@ -234,7 +234,7 @@ body{
             <li style="margin-bottom:8px;"><span class="status-badge badge-buy">🟢 BUY</span> <strong>購入推奨:</strong> 目安の下落率(Tier)に到達し、現在価格が基準日から暴騰していない状態。</li>
             <li style="margin-bottom:8px;"><span class="status-badge badge-wait">🟡 WAIT</span> <strong>上昇待機:</strong> 下落目安には達していますが、判定基準価格(直近安値付近)から価格が少し上昇(+5.0%超)しているため、手動注文の前に一時様子見を推奨する状態。</li>
             <li style="margin-bottom:8px;"><span class="status-badge badge-hold">⚪ HOLD</span> <strong>様子見:</strong> 下落率が小さく、購入目安に達していない平常の状態。</li>
-            <li style="margin-bottom:8px;"><span class="status-badge badge-high">🔴 HIGH</span> <strong>高値更新中:</strong> 設定来高値を本日更新した、または高値圏を維持している絶好調の状態。</li>
+            <li style="margin-bottom:8px;"><span class="status-badge badge-high">🔵 HIGH</span> <strong>高値更新中:</strong> 設定来高値を本日更新した、または高値圏を維持している絶好調の状態。</li>
           </ul>
         </div>
         <div class="guide-item">
@@ -264,10 +264,10 @@ body{
           </tr>
         </thead>
         <tbody>
-          <tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#f97316;box-shadow:0 0 6px #f97316"></span>      <span style="font-weight:600;">FANG+</span>    </div>  </td>  <td><span class="val-drawdown">--1.1%</span></td>  <td>+1.3%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
-<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#a855f7;box-shadow:0 0 6px #a855f7"></span>      <span style="font-weight:600;">SOX半導体</span>    </div>  </td>  <td><span class="val-drawdown">--5.2%</span></td>  <td>+0.5%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
-<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#3b82f6;box-shadow:0 0 6px #3b82f6"></span>      <span style="font-weight:600;">S&P500</span>    </div>  </td>  <td><span class="val-drawdown">--0.4%</span></td>  <td>+0.1%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
-<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#10b981;box-shadow:0 0 6px #10b981"></span>      <span style="font-weight:600;">オルカン</span>    </div>  </td>  <td><span class="val-drawdown">--0.1%</span></td>  <td>-0.5%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
+          <tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#f97316;box-shadow:0 0 6px #f97316"></span>      <span style="font-weight:600;">FANG+</span>    </div>  </td>  <td><span class="val-drawdown">0.0%</span></td>  <td>+1.3%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
+<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#a855f7;box-shadow:0 0 6px #a855f7"></span>      <span style="font-weight:600;">SOX半導体</span>    </div>  </td>  <td><span class="val-drawdown">0.0%</span></td>  <td>+0.5%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
+<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#3b82f6;box-shadow:0 0 6px #3b82f6"></span>      <span style="font-weight:600;">S&P500</span>    </div>  </td>  <td><span class="val-drawdown">0.0%</span></td>  <td>+0.1%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
+<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#10b981;box-shadow:0 0 6px #10b981"></span>      <span style="font-weight:600;">オルカン</span>    </div>  </td>  <td><span class="val-drawdown">0.0%</span></td>  <td>-0.5%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -291,13 +291,13 @@ body{
     </div>
     <div class="metric-item">
       <div class="metric-label">設定来最高価格</div>
-      <div class="metric-value">94,568円</div>
-      <div class="metric-sub">2026-07-09 記録</div>
+      <div class="metric-value">未記録</div>
+      <div class="metric-sub">- 記録</div>
     </div>
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値からの下落率</div>
-      <div class="metric-value drawdown">--1.1%</div>
-      <div class="metric-sub">Tier1 (-15%) まであと 16.1pt</div>
+      <div class="metric-value drawdown">0.0%</div>
+      <div class="metric-sub">Tier1 (-15%) まであと 15.0pt</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">判定基準日価格</div>
@@ -331,13 +331,13 @@ body{
     </div>
     <div class="metric-item">
       <div class="metric-label">設定来最高価格</div>
-      <div class="metric-value">47,899円</div>
-      <div class="metric-sub">2026-07-09 記録</div>
+      <div class="metric-value">未記録</div>
+      <div class="metric-sub">- 記録</div>
     </div>
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値からの下落率</div>
-      <div class="metric-value drawdown">--5.2%</div>
-      <div class="metric-sub">Tier1 (-10%) まであと 15.2pt</div>
+      <div class="metric-value drawdown">0.0%</div>
+      <div class="metric-sub">Tier1 (-10%) まであと 10.0pt</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">判定基準日価格</div>
@@ -371,13 +371,13 @@ body{
     </div>
     <div class="metric-item">
       <div class="metric-label">設定来最高価格</div>
-      <div class="metric-value">44,783円</div>
-      <div class="metric-sub">2026-07-09 記録</div>
+      <div class="metric-value">未記録</div>
+      <div class="metric-sub">- 記録</div>
     </div>
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値からの下落率</div>
-      <div class="metric-value drawdown">--0.4%</div>
-      <div class="metric-sub">Tier1 (-7%) まであと 7.4pt</div>
+      <div class="metric-value drawdown">0.0%</div>
+      <div class="metric-sub">Tier1 (-7%) まであと 7.0pt</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">判定基準日価格</div>
@@ -411,13 +411,13 @@ body{
     </div>
     <div class="metric-item">
       <div class="metric-label">設定来最高価格</div>
-      <div class="metric-value">38,299円</div>
-      <div class="metric-sub">2026-07-09 記録</div>
+      <div class="metric-value">未記録</div>
+      <div class="metric-sub">- 記録</div>
     </div>
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値からの下落率</div>
-      <div class="metric-value drawdown">--0.1%</div>
-      <div class="metric-sub">Tier1 (-6%) まであと 6.1pt</div>
+      <div class="metric-value drawdown">0.0%</div>
+      <div class="metric-sub">Tier1 (-6%) まであと 6.0pt</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">判定基準日価格</div>
@@ -464,6 +464,7 @@ body{
   <!-- ===== 残資金サマリー ===== -->
   <section class="section-panel">
     <div class="section-title">資金投入管理状況 &nbsp;<span style="font-size:12px; font-weight:normal; color:var(--text-mute);">(監視開始前)</span></div>
+    <p style="font-size:11px; color:var(--text-mute); margin-bottom:10px;">※現在は「監視開始前」のため、参考として②期間の金額を暫定表示しています。</p>
     <div class="table-wrapper">
       <table class="funds-table">
         <thead>
@@ -487,11 +488,11 @@ body{
 </main>
 
 <footer class="footer">
-  <p>データ出典：Yahoo!ファイナンス ｜ 本ダッシュボードは投資判断の支援のみを行います。投資は自己責任で行ってください。</p>
+  <p>データ出典：日本経済新聞 電子版（日経電子版）投資信託ページ ｜ 本ダッシュボードは投資判断の支援のみを行います。投資は自己責任で行ってください。</p>
 </footer>
 
 <script>
-const RAW_DATA = {"labels": ["2026-07-09", "2026-07-10", "2026-07-11", "2026-07-12"], "datasets": [{"id": "fang", "label": "FANG+", "data": [94568.0, 94813.0, 95596.0, 95596.0], "borderColor": "#f97316", "backgroundColor": "#f9731620", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "sox", "label": "SOX半導体", "data": [null, 49021.0, 50396.0, 50396.0], "borderColor": "#a855f7", "backgroundColor": "#a855f720", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "sp500", "label": "S&P500", "data": [null, 44704.0, 44958.0, 44958.0], "borderColor": "#3b82f6", "backgroundColor": "#3b82f620", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "orkan", "label": "オルカン", "data": [null, 38161.0, 38334.0, 38334.0], "borderColor": "#10b981", "backgroundColor": "#10b98120", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}], "tier_lines": {"fang": {"peak": 94568.0, "tier_values": [80383.0, 70926.0, 61469.0], "tiers": [15, 25, 35], "color": "#f97316"}, "sox": {"peak": 47899.0, "tier_values": [43109.0, 39277.0, 34487.0], "tiers": [10, 18, 28], "color": "#a855f7"}, "sp500": {"peak": 44783.0, "tier_values": [41648.0, 39409.0, 36722.0], "tiers": [7, 12, 18], "color": "#3b82f6"}, "orkan": {"peak": 38299.0, "tier_values": [36001.0, 34469.0, 32554.0], "tiers": [6, 10, 15], "color": "#10b981"}}};
+const RAW_DATA = {"labels": ["2026-07-10", "2026-07-11", "2026-07-12", "2026-07-13"], "datasets": [{"id": "fang", "label": "FANG+", "data": [94813.0, 95596.0, 95596.0, 95596.0], "borderColor": "#f97316", "backgroundColor": "#f9731620", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "sox", "label": "SOX半導体", "data": [49021.0, 50396.0, 50396.0, 50396.0], "borderColor": "#a855f7", "backgroundColor": "#a855f720", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "sp500", "label": "S&P500", "data": [44704.0, 44958.0, 44958.0, 44958.0], "borderColor": "#3b82f6", "backgroundColor": "#3b82f620", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "orkan", "label": "オルカン", "data": [38161.0, 38334.0, 38334.0, 38334.0], "borderColor": "#10b981", "backgroundColor": "#10b98120", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}], "tier_lines": {}};
 
 let chartInstance = null;
 

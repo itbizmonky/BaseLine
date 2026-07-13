@@ -21,8 +21,11 @@ import argparse
 import json
 import logging
 import sys
-from datetime import date, datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+# 日本標準時（UTC+9固定オフセット。tzdata依存を避けるため固定オフセットを使用）
+JST = timezone(timedelta(hours=9))
 
 # スクリプトディレクトリをパスに追加
 sys.path.insert(0, str(Path(__file__).parent))
@@ -60,8 +63,21 @@ def sync_github_workflow(settings: dict) -> None:
     # 日本時間 7:00 は UTC 22:00 (前日)
     hour_utc = (hour_jst - 9) % 24
     minute_utc = minute_jst
-    day_of_week = "*" if daily else "1-5"
-    
+
+    if daily:
+        day_of_week = "*"
+    else:
+        # JST平日(月〜金)がUTC側でどの曜日になるかを計算する。
+        # hour_jst < 9 の場合、UTC側の日付は前日にずれるため、
+        # 単純に "1-5" を使うとJSTの平日と一致しない（cron曜日: 0=日〜6=土）。
+        day_shift = -1 if hour_jst < 9 else 0
+        jst_weekdays = [1, 2, 3, 4, 5]  # 月〜金
+        utc_weekdays = sorted((d + day_shift) % 7 for d in jst_weekdays)
+        if utc_weekdays == list(range(utc_weekdays[0], utc_weekdays[0] + len(utc_weekdays))):
+            day_of_week = f"{utc_weekdays[0]}-{utc_weekdays[-1]}"
+        else:
+            day_of_week = ",".join(str(d) for d in utc_weekdays)
+
     cron_utc = f"{minute_utc} {hour_utc} * * {day_of_week}"
 
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "monitor.yml"
@@ -93,9 +109,15 @@ def main(dry_run: bool = False) -> None:
     Args:
         dry_run: True の場合、LINE通知をスキップする（テスト用）
     """
-    today = date.today()
+    today = datetime.now(JST).date()
     today_str = today.strftime("%Y-%m-%d")
-    logger.info(f"=== 暴落監視 開始: {today_str} {'[DRY RUN]' if dry_run else ''} ===")
+    logger.info(f"=== 暴落監視 開始: {today_str} (JST) {'[DRY RUN]' if dry_run else ''} ===")
+
+    # 土日は投信の基準価額が更新されないため、本番実行時はスキップする
+    # （--dry-run はダッシュボード確認用に平日以外でも実行できるようにする）
+    if not dry_run and today.weekday() >= 5:
+        logger.info(f"{today_str} はJST基準で土日のため、監視処理をスキップします。")
+        return
 
     # ----------------------------------------------------------
     # 1. 設定読み込み
@@ -173,25 +195,31 @@ def main(dry_run: bool = False) -> None:
         peak_info = peak.get(fid, {})
         peak_val = peak_info.get("value")
 
-        # 高値が未記録（監視開始前）の場合はNAVを仮の高値として扱う
-        if peak_val is None:
+        # 高値が未記録の場合、監視開始日（peak_start）以降であれば今日の値を初期高値として記録する。
+        # 監視開始前（peak_start未到達）は高値を記録せず、下落率・Tierは「未計測」として扱う。
+        if peak_val is None and today_str >= peak_start:
             logger.info(f"{fid}: 設定来高値未記録。今日の値を初期高値として記録。")
             peak[fid] = {"value": nav, "date": today_str}
             peak_val = nav
 
-        # 下落率・Tier判定
-        drawdown = calc_drawdown(nav, peak_val)
-        tier = judge_tier(drawdown, fund["tiers"])
+        # 下落率・Tier判定（監視開始前で高値未記録の場合は0扱い）
+        if peak_val is None:
+            drawdown = 0.0
+            tier = 0
+        else:
+            drawdown = calc_drawdown(nav, peak_val)
+            tier = judge_tier(drawdown, fund["tiers"])
 
         # 基準日比・購入判定
         baseline_nav = settings.get("baseline", {}).get("prices", {}).get(fid, 0)
         tolerance_pct = settings.get("baseline", {}).get("initial_price_tolerance_percent", 5.0)
         baseline_ratio = calc_baseline_ratio(nav, baseline_nav)
-        is_hwm = (drawdown == 0.0)
+        is_hwm = (peak_val is not None and drawdown == 0.0)
         decision = judge_decision(tier, nav, baseline_nav, tolerance_pct, is_hwm)
 
+        peak_val_str = f"{peak_val:,.0f}円" if peak_val is not None else "未記録"
         logger.info(
-            f"{fund['short_name']}: NAV={nav:,.0f}円 / 高値={peak_val:,.0f}円 / "
+            f"{fund['short_name']}: NAV={nav:,.0f}円 / 高値={peak_val_str} / "
             f"下落率={drawdown:.2f}% / 基準日比={baseline_ratio:+.2f}% / "
             f"Tier={tier} / 判定={decision}"
         )

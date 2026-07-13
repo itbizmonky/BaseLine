@@ -16,6 +16,8 @@ import logging
 from datetime import date, datetime
 from pathlib import Path
 
+from judge import decision_display, format_drawdown
+
 logger = logging.getLogger(__name__)
 
 PUBLIC_DIR = Path(__file__).parent.parent / "public"
@@ -38,7 +40,7 @@ def generate(
     summary_html = _build_summary_table(fund_results, settings)
     cards_html = _build_fund_cards(fund_results, navs, peak, triggered, period_info, settings)
     trend_html = _build_trend_summary(fund_results)
-    funds_html = _build_funds_summary(triggered, period_info, settings)
+    funds_html, funds_note_html = _build_funds_summary(triggered, period_info, settings)
 
     html = _render_html(
         today_str=today_str,
@@ -47,6 +49,7 @@ def generate(
         cards_html=cards_html,
         trend_html=trend_html,
         funds_html=funds_html,
+        funds_note_html=funds_note_html,
         chart_data_json=json.dumps(chart_data, ensure_ascii=False),
         settings=settings,
     )
@@ -119,9 +122,10 @@ def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
     for r in fund_results:
         color = fund_colors.get(r["fund_id"], "#ffffff")
         decision = r.get("decision", "HOLD")
-        dec_emoji = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "HOLD": "⚪ HOLD", "HIGH": "🔴 HIGH"}.get(decision, decision)
-        dec_label = {"BUY": "購入推奨", "WAIT": "上昇待機", "HOLD": "様子見", "HIGH": "高値更新中"}.get(decision, decision)
-        dec_class = {"BUY": "badge-buy", "WAIT": "badge-wait", "HOLD": "badge-hold", "HIGH": "badge-high"}.get(decision, "badge-hold")
+        info = decision_display(decision)
+        dec_emoji = f"{info['emoji']} {info['tag']}"
+        dec_label = info["label"]
+        dec_class = f"badge-{info['css']}"
 
         tier_val = r["tier"]
         tier_str = f"Tier {tier_val}" if tier_val > 0 else "未到達"
@@ -134,7 +138,7 @@ def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
             f'      <span style="font-weight:600;">{r["short_name"]}</span>'
             f'    </div>'
             f'  </td>'
-            f'  <td><span class="val-drawdown">-{r["drawdown"]:.1f}%</span></td>'
+            f'  <td><span class="val-drawdown">{format_drawdown(r["drawdown"])}</span></td>'
             f'  <td>{r["baseline_ratio"]:+.1f}%</td>'
             f'  <td><span class="val-tier">{tier_str}</span></td>'
             f'  <td><span class="status-badge {dec_class}">{dec_emoji} {dec_label}</span></td>'
@@ -175,9 +179,10 @@ def _build_fund_cards(
         tiers = fund["tiers"]
         color = fund["color"]
         
-        dec_emoji = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "HOLD": "⚪ HOLD", "HIGH": "🔴 HIGH"}.get(decision, decision)
-        dec_label = {"BUY": "購入推奨", "WAIT": "上昇待機", "HOLD": "様子見", "HIGH": "高値更新中"}.get(decision, decision)
-        dec_class = {"BUY": "dec-buy", "WAIT": "dec-wait", "HOLD": "dec-hold", "HIGH": "dec-high"}.get(decision, "dec-hold")
+        info = decision_display(decision)
+        dec_emoji = f"{info['emoji']} {info['tag']}"
+        dec_label = info["label"]
+        dec_class = f"dec-{info['css']}"
 
         next_tier_text = _next_tier_text(tier, drawdown, tiers)
 
@@ -185,7 +190,7 @@ def _build_fund_cards(
         peak_str = f"{peak_val:,.0f}円" if peak_val is not None else "未記録"
         baseline_str = f"{baseline_nav:,.0f}円" if baseline_nav > 0 else "未設定"
         
-        drawdown_str = f"-{drawdown:.1f}%" if nav is not None else "-"
+        drawdown_str = format_drawdown(drawdown) if nav is not None else "-"
         baseline_ratio_str = f"{baseline_ratio:+.1f}%" if nav is not None else "-"
 
         tier_bars = _tier_bars(tier, tiers, color)
@@ -271,10 +276,19 @@ def _build_trend_summary(fund_results: list[dict]) -> str:
     return "\n".join(items)
 
 
-def _build_funds_summary(triggered: dict, period_info: dict, settings: dict) -> str:
+def _build_funds_summary(triggered: dict, period_info: dict, settings: dict) -> tuple[str, str]:
     phase_key = period_info.get("phase", "phase2")
-    if phase_key not in ("phase2", "phase3"):
+    is_fallback = phase_key not in ("phase2", "phase3")
+    if is_fallback:
         phase_key = "phase2"
+
+    fallback_label = settings.get("periods", {}).get(phase_key, {}).get("label", "②期間")
+    note_html = (
+        f'<p style="font-size:11px; color:var(--text-mute); margin-bottom:10px;">'
+        f'※現在は「{period_info.get("label", "-")}」のため、参考として{fallback_label}の金額を暫定表示しています。'
+        f'</p>'
+        if is_fallback else ""
+    )
 
     from judge import calc_remaining_funds
     rows = []
@@ -289,7 +303,7 @@ def _build_funds_summary(triggered: dict, period_info: dict, settings: dict) -> 
             f'  <td>{rem["total"]:,}円</td>'
             f'</tr>'
         )
-    return "\n".join(rows)
+    return "\n".join(rows), note_html
 
 
 # ------------------------------------------------------------------
@@ -303,6 +317,7 @@ def _render_html(
     cards_html: str,
     trend_html: str,
     funds_html: str,
+    funds_note_html: str,
     chart_data_json: str,
     settings: dict,
 ) -> str:
@@ -423,7 +438,7 @@ body{{
 .badge-buy, .dec-buy{{ background: rgba(16,185,129,0.15); color: var(--green); border-color: rgba(16,185,129,0.3); box-shadow: var(--green-glow); }}
 .badge-wait, .dec-wait{{ background: rgba(245,158,11,0.15); color: var(--yellow); border-color: rgba(245,158,11,0.3); box-shadow: var(--yellow-glow); }}
 .badge-hold, .dec-hold{{ background: rgba(255,255,255,0.05); color: var(--text-mute); border-color: rgba(255,255,255,0.05); }}
-.badge-high, .dec-high{{ background: rgba(239,68,68,0.15); color: var(--red); border-color: rgba(239,68,68,0.3); box-shadow: var(--red-glow); }}
+.badge-high, .dec-high{{ background: rgba(59,130,246,0.15); color: var(--blue); border-color: rgba(59,130,246,0.3); box-shadow: 0 0 12px rgba(59,130,246,0.4); }}
 
 /* ===== Neumorphic Table ===== */
 .table-wrapper{{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--radius); padding: 12px; overflow-x: auto; }}
@@ -554,7 +569,7 @@ body{{
             <li style="margin-bottom:8px;"><span class="status-badge badge-buy">🟢 BUY</span> <strong>購入推奨:</strong> 目安の下落率(Tier)に到達し、現在価格が基準日から暴騰していない状態。</li>
             <li style="margin-bottom:8px;"><span class="status-badge badge-wait">🟡 WAIT</span> <strong>上昇待機:</strong> 下落目安には達していますが、判定基準価格(直近安値付近)から価格が少し上昇(+5.0%超)しているため、手動注文の前に一時様子見を推奨する状態。</li>
             <li style="margin-bottom:8px;"><span class="status-badge badge-hold">⚪ HOLD</span> <strong>様子見:</strong> 下落率が小さく、購入目安に達していない平常の状態。</li>
-            <li style="margin-bottom:8px;"><span class="status-badge badge-high">🔴 HIGH</span> <strong>高値更新中:</strong> 設定来高値を本日更新した、または高値圏を維持している絶好調の状態。</li>
+            <li style="margin-bottom:8px;"><span class="status-badge badge-high">🔵 HIGH</span> <strong>高値更新中:</strong> 設定来高値を本日更新した、または高値圏を維持している絶好調の状態。</li>
           </ul>
         </div>
         <div class="guide-item">
@@ -619,6 +634,7 @@ body{{
   <!-- ===== 残資金サマリー ===== -->
   <section class="section-panel">
     <div class="section-title">資金投入管理状況 &nbsp;<span style="font-size:12px; font-weight:normal; color:var(--text-mute);">({phase_label})</span></div>
+    {funds_note_html}
     <div class="table-wrapper">
       <table class="funds-table">
         <thead>
@@ -639,7 +655,7 @@ body{{
 </main>
 
 <footer class="footer">
-  <p>データ出典：Yahoo!ファイナンス ｜ 本ダッシュボードは投資判断の支援のみを行います。投資は自己責任で行ってください。</p>
+  <p>データ出典：日本経済新聞 電子版（日経電子版）投資信託ページ ｜ 本ダッシュボードは投資判断の支援のみを行います。投資は自己責任で行ってください。</p>
 </footer>
 
 <script>

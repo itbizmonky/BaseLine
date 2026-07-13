@@ -2,7 +2,7 @@
   "dashboard_url": "https://itbizmonky.github.io/BaseLine/",
   "schedule": {
     "hour_jst": 7,
-    "minute_jst": 0,
+    "minute_jst": 15,
     "daily": false
   },
   "funds": [

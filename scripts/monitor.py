@@ -163,7 +163,8 @@ def main(dry_run: bool = False) -> None:
     # ----------------------------------------------------------
     peak = load_peak()
     peak_start = settings.get("peak_start_date", "2026-08-01")
-    peak, updated_ids = update_peak(peak, navs, today_str, peak_start)
+    history = load_history()
+    peak, updated_ids = update_peak(peak, navs, today_str, peak_start, history)
 
     # ----------------------------------------------------------
     # 5. 期間判定
@@ -175,7 +176,6 @@ def main(dry_run: bool = False) -> None:
     # 6. 下落率計算・Tier判定・通知
     # ----------------------------------------------------------
     triggered = load_triggered()
-    history = load_history()
     fund_results = []
 
     for fund in funds:
@@ -194,13 +194,9 @@ def main(dry_run: bool = False) -> None:
 
         peak_info = peak.get(fid, {})
         peak_val = peak_info.get("value")
-
-        # 高値が未記録の場合、監視開始日（peak_start）以降であれば今日の値を初期高値として記録する。
-        # 監視開始前（peak_start未到達）は高値を記録せず、下落率・Tierは「未計測」として扱う。
-        if peak_val is None and today_str >= peak_start:
-            logger.info(f"{fid}: 設定来高値未記録。今日の値を初期高値として記録。")
-            peak[fid] = {"value": nav, "date": today_str}
-            peak_val = nav
+        # 監視開始前（peak_start未到達）は高値が記録されないため未計測として扱う。
+        # 監視開始後は上記update_peak()で初回シード（history.csv遡り確認込み）済みのため
+        # ここで改めて仮登録する必要はない。
 
         # 下落率・Tier判定（監視開始前で高値未記録の場合は0扱い）
         if peak_val is None:

@@ -60,7 +60,7 @@
     },
     "extension_end": "2027-12-31"
   },
-  "peak_start_date": "2026-08-01",
+  "peak_start_date": "2026-07-07",
   "funds_phase2": {
     "_comment": "②期間の原資金額設定（円）。tier_amountsは各Tierへの投入予定額",
     "total": 533049,

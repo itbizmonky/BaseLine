@@ -118,10 +118,14 @@ def append_history(today_str: str, navs: dict) -> None:
 # 設定来高値 更新
 # ------------------------------------------------------------------
 
-def update_peak(peak: dict, navs: dict, today_str: str, peak_start_date: str) -> tuple[dict, list[str]]:
+def update_peak(peak: dict, navs: dict, today_str: str, peak_start_date: str, history: list[dict] | None = None) -> tuple[dict, list[str]]:
     """
     各ファンドの設定来高値を更新する。
     監視開始日（peak_start_date）以降のデータのみ高値更新の対象とする。
+
+    ファンドの初回記録時は、peak_start_date以降のhistory.csv記録も確認し、
+    本日の値より高い記録があればそちらを初期値として採用する（peak_start_dateを
+    過去日付に設定した場合の取りこぼし防止。history未指定時は本日の値をそのまま使う）。
 
     Returns:
         (updated_peak, updated_fund_ids)
@@ -134,13 +138,40 @@ def update_peak(peak: dict, navs: dict, today_str: str, peak_start_date: str) ->
     for fund_id, nav in navs.items():
         if nav is None:
             continue
-        current_peak = peak.get(fund_id, {}).get("value", 0)
+        if fund_id not in peak:
+            seed = seed_initial_peak(history or [], fund_id, peak_start_date, nav, today_str)
+            peak[fund_id] = seed
+            updated_ids.append(fund_id)
+            logger.info(f"{fund_id}: 設定来高値を初期記録 {seed['value']:,.0f}円 ({seed['date']})")
+            continue
+        current_peak = peak[fund_id].get("value", 0)
         if nav > current_peak:
             peak[fund_id] = {"value": nav, "date": today_str}
             updated_ids.append(fund_id)
             logger.info(f"{fund_id}: 設定来高値を更新 {current_peak} → {nav}円 ({today_str})")
 
     return peak, updated_ids
+
+
+def seed_initial_peak(history: list[dict], fund_id: str, peak_start_date: str, today_nav: float, today_str: str) -> dict:
+    """
+    ピーク未記録時の初期値を決定する。
+    peak_start_date が過去日付の場合、その日以降で既にhistory.csvに記録済みの値の中に
+    本日の値より高いものがあれば、それを初期ピークとして採用する（取りこぼし防止）。
+    """
+    best_value = today_nav
+    best_date = today_str
+    for row in history:
+        row_date = row.get("date")
+        row_nav = row.get(fund_id)
+        if row_date is None or row_nav is None:
+            continue
+        if row_date < peak_start_date or row_date > today_str:
+            continue
+        if row_nav > best_value:
+            best_value = row_nav
+            best_date = row_date
+    return {"value": best_value, "date": best_date}
 
 
 # ------------------------------------------------------------------

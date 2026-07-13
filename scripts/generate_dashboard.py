@@ -324,6 +324,7 @@ def _render_html(
     phase_label = period_info.get("label", "-")
     days_remaining = period_info.get("days_remaining", 0)
     baseline_date = settings.get("baseline", {}).get("date", "2026-07-07")
+    peak_start_date = settings.get("peak_start_date", "2026-08-01")
     phase_type = period_info.get("phase", "none")
 
     if phase_type == "before_start":
@@ -575,7 +576,7 @@ body{{
         <div class="guide-item">
           <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">📐 暴落判定ルール</h4>
           <ul style="padding-left: 0;">
-            <li style="margin-bottom:8px;"><strong>最高値からの下落率:</strong> 2026年8月以降に記録した最高値から、現在の価格が何％下がっているかを表します（例: <code>-15.0%</code>）。この下落が設定した各Tierに達するとシグナルが発動します。</li>
+            <li style="margin-bottom:8px;"><strong>最高値からの下落率:</strong> {peak_start_date}以降に記録した最高値から、現在の価格が何％下がっているかを表します（例: <code>-15.0%</code>）。この下落が設定した各Tierに達するとシグナルが発動します。</li>
             <li style="margin-bottom:8px;"><strong>判定基準価格:</strong> 暴落初期や安値時の価格を基準とし、そこから<code>+5.0%</code>以上価格が急上昇した場合は、高値掴みを避けるため一時的に <code>WAIT</code> と判定されます。</li>
             <li style="margin-bottom:8px;"><strong>注意:</strong> 実際の買付注文は、SBI証券等の画面から手動で発注する必要があります。</li>
           </ul>

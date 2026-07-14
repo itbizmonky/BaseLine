@@ -164,7 +164,8 @@ def main(dry_run: bool = False) -> None:
     peak = load_peak()
     peak_start = settings.get("peak_start_date", "2026-08-01")
     history = load_history()
-    peak, updated_ids = update_peak(peak, navs, today_str, peak_start, history)
+    baseline = settings.get("baseline", {})
+    peak, updated_ids = update_peak(peak, navs, today_str, peak_start, history, baseline)
 
     # ----------------------------------------------------------
     # 5. 期間判定

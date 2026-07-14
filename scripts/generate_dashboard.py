@@ -328,7 +328,7 @@ def _render_html(
     phase_type = period_info.get("phase", "none")
 
     if phase_type == "before_start":
-        period_display_str = f"📅 状態: 監視開始前 (開始まであと{days_remaining}日)"
+        period_display_str = f"📅 状態: ②期間開始まであと{days_remaining}日"
     elif phase_type == "ended":
         period_display_str = "📅 状態: 監視期間終了"
     else:

@@ -2,8 +2,8 @@ name: 暴落監視ダッシュボード 日次実行
 
 on:
   schedule:
-    # JST 07:15（月〜金）は UTC 前日 22:15（日〜木）にあたる
-    - cron: '15 22 * * 0-4'
+    # JST 07:00（月〜金）は UTC 前日 22:00（日〜木）にあたる
+    - cron: '0 22 * * 0-4'
   workflow_dispatch:
     # GitHub UI から手動実行ボタン（テスト用）
     inputs:

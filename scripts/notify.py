@@ -99,7 +99,7 @@ def build_tier_message(
 
     days_rem = period_info.get('days_remaining', '-')
     if period_info.get('phase') == 'before_start':
-        period_days_str = f"   開始まであと: {days_rem}日"
+        period_days_str = f"   ②期間開始まであと{days_rem}日"
     elif period_info.get('phase') == 'ended':
         period_days_str = "   監視期間終了"
     else:
@@ -158,12 +158,16 @@ def build_daily_summary_message(
         dec_emoji = f"{info['emoji']} {info['tag']}"
         tier_val = r.get("tier", 0)
         tier_str = f"Tier{tier_val}" if tier_val > 0 else "Tier未到達"
-        lines.append(f"{dec_emoji} {r['short_name']}:\n   最高値比: {format_drawdown(r['drawdown'])} / 基準日比: {r['baseline_ratio']:+.1f}% ({tier_str})")
+        lines.append(
+            f"{dec_emoji} {r['short_name']}:\n"
+            f"   最高値比: {format_drawdown(r['drawdown'])}\n"
+            f"   基準日比: {r['baseline_ratio']:+.1f}% ({tier_str})"
+        )
     
     phase_type = period_info.get('phase', 'none')
     days_rem = period_info.get('days_remaining', '-')
     if phase_type == 'before_start':
-        period_str = f"{period_info.get('label', '-')} (開始まであと{days_rem}日)"
+        period_str = f"②期間開始まであと{days_rem}日"
     elif phase_type == 'ended':
         period_str = f"{period_info.get('label', '-')}"
     else:

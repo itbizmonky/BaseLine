@@ -118,7 +118,14 @@ def append_history(today_str: str, navs: dict) -> None:
 # 設定来高値 更新
 # ------------------------------------------------------------------
 
-def update_peak(peak: dict, navs: dict, today_str: str, peak_start_date: str, history: list[dict] | None = None) -> tuple[dict, list[str]]:
+def update_peak(
+    peak: dict,
+    navs: dict,
+    today_str: str,
+    peak_start_date: str,
+    history: list[dict] | None = None,
+    baseline: dict | None = None,
+) -> tuple[dict, list[str]]:
     """
     各ファンドの設定来高値を更新する。
     監視開始日（peak_start_date）以降のデータのみ高値更新の対象とする。
@@ -127,6 +134,12 @@ def update_peak(peak: dict, navs: dict, today_str: str, peak_start_date: str, hi
     本日の値より高い記録があればそちらを初期値として採用する（peak_start_dateを
     過去日付に設定した場合の取りこぼし防止。history未指定時は本日の値をそのまま使う）。
 
+    さらに baseline（settings.jsonの基準日価格）が peak_start_date 以降かつ本日以前で、
+    記録済みの来高値を上回っている場合は補正する。history.csvはperak_start_date当日から
+    の記録が欠落している可能性があるため（例: 監視開始をさかのぼって設定した場合）、
+    唯一残っている基準日時点の実績値を取りこぼさないようにするための補正であり、
+    毎回無条件に確認する（初回記録済み以降のデータ欠落にも自己修復的に対応できる）。
+
     Returns:
         (updated_peak, updated_fund_ids)
     """
@@ -134,20 +147,42 @@ def update_peak(peak: dict, navs: dict, today_str: str, peak_start_date: str, hi
         logger.info(f"今日 {today_str} は高値更新対象期間外 (開始: {peak_start_date})")
         return peak, []
 
+    baseline_date = (baseline or {}).get("date")
+    baseline_prices = (baseline or {}).get("prices", {})
+
     updated_ids = []
     for fund_id, nav in navs.items():
         if nav is None:
             continue
+
         if fund_id not in peak:
             seed = seed_initial_peak(history or [], fund_id, peak_start_date, nav, today_str)
             peak[fund_id] = seed
             updated_ids.append(fund_id)
             logger.info(f"{fund_id}: 設定来高値を初期記録 {seed['value']:,.0f}円 ({seed['date']})")
-            continue
+
         current_peak = peak[fund_id].get("value", 0)
+
+        baseline_price = baseline_prices.get(fund_id)
+        if (
+            baseline_date is not None
+            and baseline_price is not None
+            and peak_start_date <= baseline_date <= today_str
+            and baseline_price > current_peak
+        ):
+            peak[fund_id] = {"value": baseline_price, "date": baseline_date}
+            current_peak = baseline_price
+            if fund_id not in updated_ids:
+                updated_ids.append(fund_id)
+            logger.info(
+                f"{fund_id}: 基準日({baseline_date})価格{baseline_price:,.0f}円が記録済み来高値を"
+                f"上回るため補正"
+            )
+
         if nav > current_peak:
             peak[fund_id] = {"value": nav, "date": today_str}
-            updated_ids.append(fund_id)
+            if fund_id not in updated_ids:
+                updated_ids.append(fund_id)
             logger.info(f"{fund_id}: 設定来高値を更新 {current_peak} → {nav}円 ({today_str})")
 
     return peak, updated_ids
@@ -273,7 +308,7 @@ def detect_period(today: date, settings: dict) -> dict:
     Returns:
         {
             "phase": "before_start" | "phase2" | "phase3" | "extension" | "ended" | "none",
-            "label": "監視開始前" | "②期間" | "③期間" | "延長期間" | "監視期間終了" | "監視外期間",
+            "label": "②期間開始前" | "②期間" | "③期間" | "延長期間" | "監視期間終了" | "監視外期間",
             "days_remaining": int,
             "end_date": date,
         }
@@ -292,7 +327,7 @@ def detect_period(today: date, settings: dict) -> dict:
     if today < p2_start:
         return {
             "phase": "before_start",
-            "label": "監視開始前",
+            "label": "②期間開始前",
             "days_remaining": (p2_start - today).days,
             "end_date": p2_start,
         }

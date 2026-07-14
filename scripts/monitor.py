@@ -31,6 +31,10 @@ JST = timezone(timedelta(hours=9))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from fetch_nav import fetch_all_nav, load_settings
+from market_data import (
+    fetch_all_market_data, load_market, save_market, update_market,
+    judge_vix_level, calc_direction,
+)
 from judge import (
     load_peak, save_peak,
     load_triggered, save_triggered,
@@ -139,6 +143,51 @@ def main(dry_run: bool = False) -> None:
         retry_count=retry_count,
         retry_interval=retry_interval if not dry_run else 1,
     )
+
+    # ----------------------------------------------------------
+    # 2.5 市場心理指標の取得（参考情報。Tier判定・通知には一切影響させない）
+    # ----------------------------------------------------------
+    market_display = {}
+    try:
+        market_settings = settings.get("market_indicators", {})
+        if market_settings.get("enabled", True):
+            old_market = load_market()
+            fetched_market = fetch_all_market_data(settings)
+            vix_thresholds = market_settings.get("vix_thresholds")
+
+            if fetched_market.get("vix") is not None:
+                market_display["vix"] = {
+                    "value": fetched_market["vix"],
+                    "date": today_str,
+                    "level": judge_vix_level(fetched_market["vix"], vix_thresholds),
+                }
+            elif "vix" in old_market:
+                market_display["vix"] = {
+                    **old_market["vix"],
+                    "level": judge_vix_level(old_market["vix"]["value"], vix_thresholds),
+                }
+
+            for key in ("us10y", "usdjpy"):
+                prev_value = old_market.get(key, {}).get("value")
+                cur_value = fetched_market.get(key)
+                if cur_value is not None:
+                    market_display[key] = {
+                        "value": cur_value,
+                        "date": today_str,
+                        "direction": calc_direction(cur_value, prev_value),
+                    }
+                elif key in old_market:
+                    market_display[key] = {
+                        **old_market[key],
+                        "direction": {"diff": None, "arrow": "→"},
+                    }
+
+            new_market = update_market(old_market, fetched_market, today_str)
+            save_market(new_market)
+            logger.info(f"市場心理指標: {fetched_market}")
+    except Exception as e:
+        # 参考情報の取得失敗でTier判定・通知が止まらないよう、例外を握りつぶす
+        logger.warning(f"市場心理指標の取得中にエラーが発生しましたが処理を続行します: {e}")
 
     # ----------------------------------------------------------
     # 3. 取得失敗チェック
@@ -294,6 +343,7 @@ def main(dry_run: bool = False) -> None:
         period_info=period_info,
         settings=settings,
         triggered=triggered,
+        market_display=market_display,
     )
 
     logger.info(f"=== 暴落監視 完了: {today_str} ===")

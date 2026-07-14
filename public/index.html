@@ -104,6 +104,11 @@ body{
 .badge-wait, .dec-wait{ background: rgba(245,158,11,0.15); color: var(--yellow); border-color: rgba(245,158,11,0.3); box-shadow: var(--yellow-glow); }
 .badge-hold, .dec-hold{ background: rgba(255,255,255,0.05); color: var(--text-mute); border-color: rgba(255,255,255,0.05); }
 .badge-high, .dec-high{ background: rgba(59,130,246,0.15); color: var(--blue); border-color: rgba(59,130,246,0.3); box-shadow: 0 0 12px rgba(59,130,246,0.4); }
+.vix-hot{ background: rgba(59,130,246,0.15); color: var(--blue); border-color: rgba(59,130,246,0.3); }
+.vix-normal{ background: rgba(16,185,129,0.15); color: var(--green); border-color: rgba(16,185,129,0.3); }
+.vix-caution{ background: rgba(245,158,11,0.15); color: var(--yellow); border-color: rgba(245,158,11,0.3); }
+.vix-fear{ background: rgba(249,115,22,0.18); color: #f97316; border-color: rgba(249,115,22,0.35); box-shadow: 0 0 10px rgba(249,115,22,0.3); }
+.vix-crash{ background: rgba(239,68,68,0.18); color: var(--red); border-color: rgba(239,68,68,0.35); box-shadow: var(--red-glow); }
 
 /* ===== Neumorphic Table ===== */
 .table-wrapper{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--radius); padding: 12px; overflow-x: auto; }
@@ -183,6 +188,21 @@ body{
 .trend-val{ font-size: 12px; font-family: 'Inter', monospace; color: var(--text); }
 .trend-icon{ font-weight: 700; color: var(--blue); }
 
+/* ===== 市場心理カード ===== */
+.market-disclaimer{ font-size: 12px; color: var(--text-mute); margin-bottom: 16px; line-height: 1.6; }
+.market-grid{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+.market-card{
+  background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--inner-radius);
+  padding: 16px; display: flex; flex-direction: column; gap: 6px;
+}
+.market-card__label{ font-size: 11px; font-weight: 700; color: var(--text-mute); text-transform: uppercase; }
+.market-card__value{ font-size: 22px; font-weight: 700; font-family: 'Inter', monospace; color: var(--text); }
+.market-card__unit{ font-size: 13px; font-weight: 600; color: var(--text-mute); margin-left: 2px; }
+.market-card__direction{ font-size: 12px; color: var(--text); font-family: 'Inter', monospace; }
+.market-card__note{ font-size: 11px; color: var(--text-mute); line-height: 1.6; margin-top: 2px; }
+.market-card__date{ font-size: 10px; color: var(--text-mute); opacity: 0.7; margin-top: 4px; }
+.market-empty{ grid-column: 1 / -1; text-align: center; font-size: 12px; color: var(--text-mute); padding: 20px; }
+
 .funds-table{ width:100%; border-collapse:collapse; font-size:13px; }
 .funds-table th{ text-align:left; padding:10px; color:var(--text-mute); font-size:11px; font-weight:600; border-bottom:1px solid rgba(255,255,255,0.02); }
 .funds-table td{ padding:12px 10px; border-bottom:1px solid rgba(255,255,255,0.02); font-family:'Inter',monospace; }
@@ -196,6 +216,7 @@ body{
   .fund-card__metrics{ grid-template-columns: 1fr 1fr; }
   .trend-grid{ grid-template-columns: 1fr 1fr; }
   .guide-grid{ grid-template-columns: 1fr; }
+  .market-grid{ grid-template-columns: 1fr; }
 }
 @media(max-width: 480px){
   .header-inner{ flex-direction: column; gap: 8px; text-align: center; }
@@ -450,6 +471,37 @@ body{
     </div>
   </section>
 
+  <!-- ===== 市場心理（参考情報） ===== -->
+  <section class="section-panel">
+    <div class="section-title">🌡️ 市場心理（参考情報）</div>
+    <p class="market-disclaimer">これらは売買の判断基準ではありません。BUY/WAITの判定は引き続き価格（Tier）のみで行われます。判定に迷ったときの参考としてご覧ください。</p>
+    <button class="guide-toggle" id="marketGuideToggle">
+      <span>💡 3つの指標の見方 (初心者向けガイド)</span>
+      <span class="toggle-icon" style="display:inline-block; transition:transform 0.2s;">▼</span>
+    </button>
+    <div class="guide-content" id="marketGuideContent">
+      <div class="guide-grid" style="padding: 16px 0;">
+        <div class="guide-item">
+          <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">😨 VIX指数（恐怖指数）</h4>
+          <p>市場参加者の不安・警戒感の大きさを数値化した指標です。数値が高いほど「市場全体が動揺している」状態を表します。FANG+やSOXのような銘柄は、市場全体が動揺すると相場全体以上に大きく下がりやすい性質があります。VIXが高いときのTier到達は「全面安に巻き込まれている」可能性、VIXが平常のままのTier到達は「個別要因での下落」の可能性を示唆します。</p>
+        </div>
+        <div class="guide-item">
+          <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">💰 米10年国債利回り</h4>
+          <p>米国政府が10年間お金を借りる際の金利です。FANG+やSOXのような成長株は、将来の利益を現在価値に割り引いて株価が形成されるため、金利が上がると株価が下がりやすい関係が知られています。金利が急上昇しているときのTier到達は、金利要因による調整の可能性を示唆します。</p>
+        </div>
+        <div class="guide-item">
+          <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">💱 USD/JPY（ドル円）</h4>
+          <p>1ドルが何円かを表すレートです。4銘柄はいずれも為替ヘッジなしのため、基準価額の変動には「米国株そのものの値動き」と「円ドルレートの変動」の両方が混ざっています。円高が進んでいるときのTier到達は、見た目の下落の一部が為替要因である可能性を示唆します。</p>
+        </div>
+      </div>
+    </div>
+    <div class="market-grid">
+      <div class="market-card">  <div class="market-card__label">VIX指数（恐怖指数）</div>  <div class="market-card__value">17.16</div>  <span class="status-badge vix-normal">通常</span>  <div class="market-card__note">市場は落ち着いた平常運転の状態です。</div>  <div class="market-card__date">2026-07-14 時点</div></div>
+<div class="market-card">  <div class="market-card__label">米10年国債利回り</div>  <div class="market-card__value">4.62<span class="market-card__unit">%</span></div>  <div class="market-card__direction"><span class="trend-icon">→</span> 前回比 +0.000pt</div>  <div class="market-card__note">成長株（FANG+・SOXなど）は金利上昇局面で下がりやすい傾向があります。</div>  <div class="market-card__date">2026-07-14 時点</div></div>
+<div class="market-card">  <div class="market-card__label">USD/JPY（ドル円）</div>  <div class="market-card__value">162.34<span class="market-card__unit">円</span></div>  <div class="market-card__direction"><span class="trend-icon">↘</span> 前回比 -0.01円</div>  <div class="market-card__note">円高が進むと、米国株の実力が変わらなくても基準価額は下がって見えます。</div>  <div class="market-card__date">2026-07-14 時点</div></div>
+    </div>
+  </section>
+
   <!-- ===== トレンドサマリー ===== -->
   <section class="section-panel">
     <div class="section-title">直近モメンタム (トレンド)</div>
@@ -496,19 +548,24 @@ const RAW_DATA = {"labels": ["2026-07-07", "2026-07-08", "2026-07-09", "2026-07-
 
 let chartInstance = null;
 
-// アコーディオンの開閉制御
-const toggle = document.getElementById('guideToggle');
-const content = document.getElementById('guideContent');
-const icon = toggle.querySelector('.toggle-icon');
-toggle.addEventListener('click', () => {
-  if (content.style.maxHeight && content.style.maxHeight !== '0px') {
-    content.style.maxHeight = '0px';
-    icon.style.transform = 'rotate(0deg)';
-  } else {
-    content.style.maxHeight = content.scrollHeight + 'px';
-    icon.style.transform = 'rotate(180deg)';
-  }
-});
+// アコーディオンの開閉制御（汎用化して複数箇所で使い回す）
+function setupAccordion(toggleId, contentId) {
+  const toggle = document.getElementById(toggleId);
+  const content = document.getElementById(contentId);
+  if (!toggle || !content) return;
+  const icon = toggle.querySelector('.toggle-icon');
+  toggle.addEventListener('click', () => {
+    if (content.style.maxHeight && content.style.maxHeight !== '0px') {
+      content.style.maxHeight = '0px';
+      icon.style.transform = 'rotate(0deg)';
+    } else {
+      content.style.maxHeight = content.scrollHeight + 'px';
+      icon.style.transform = 'rotate(180deg)';
+    }
+  });
+}
+setupAccordion('guideToggle', 'guideContent');
+setupAccordion('marketGuideToggle', 'marketGuideContent');
 
 function buildDatasets(fundFilter) {
   return RAW_DATA.datasets

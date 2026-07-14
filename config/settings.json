@@ -95,5 +95,20 @@
     "enabled": true,
     "retry_count": 3,
     "retry_interval_sec": 30
+  },
+  "market_indicators": {
+    "_comment": "市場心理指標（参考情報）。BUY/WAIT判定には使用しない。ダッシュボードのみに表示（LINE通知には含めない）",
+    "enabled": true,
+    "sources": {
+      "vix": "https://www.nikkei.com/marketdata/quote/VIX/",
+      "us10y": "https://www.nikkei.com/marketdata/quote/US10YT/",
+      "usdjpy": "https://www.nikkei.com/marketdata/quote/USDJPY/"
+    },
+    "vix_thresholds": {
+      "overheated": 15,
+      "normal": 20,
+      "caution": 30,
+      "fear": 40
+    }
   }
 }

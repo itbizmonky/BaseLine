@@ -41,7 +41,7 @@ from judge import (
     load_history, append_history,
     update_peak,
     calc_drawdown, judge_tier, calc_baseline_ratio, judge_decision,
-    is_new_trigger, record_trigger,
+    is_new_trigger, record_trigger, update_recovery_status,
     detect_period, calc_trend, calc_remaining_funds,
 )
 from notify import notify_tier_reached, notify_fetch_error, notify_daily_summary
@@ -270,6 +270,10 @@ def main(dry_run: bool = False) -> None:
             f"Tier={tier} / 判定={decision}"
         )
 
+        # 見送ったTierが回復した（現在のTierが記録より低い）かどうかを毎回更新する。
+        # これにより、回復後に再び同じTierへ到達した際に新規到達として再通知できる。
+        triggered = update_recovery_status(fid, tier, triggered)
+
         # 新規Tier到達 → LINE通知
         if is_new_trigger(fid, tier, triggered):
             phase_key = period_info.get("phase", "phase2")
@@ -293,7 +297,7 @@ def main(dry_run: bool = False) -> None:
             else:
                 logger.info(f"[DRY RUN or 通知OFF] {fund['short_name']} Tier{tier} 到達通知をスキップ")
 
-            triggered = record_trigger(fid, tier, triggered)
+            triggered = record_trigger(fid, tier, triggered, date=today_str)
 
         # トレンド計算
         trend_5d = calc_trend(history, fid, days=5)

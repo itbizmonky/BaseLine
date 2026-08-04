@@ -1,8 +1,20 @@
 {
   "fang": [],
   "sox": [
-    1,
-    2
+    {
+      "tier": 1,
+      "date": null,
+      "invested": true,
+      "note": null,
+      "recovered": false
+    },
+    {
+      "tier": 2,
+      "date": "2026-07-31",
+      "invested": false,
+      "note": "翌営業日の株価上昇を見込み、意図的に投資を見送った（結果的に的中）",
+      "recovered": true
+    }
   ],
   "sp500": [],
   "orkan": []

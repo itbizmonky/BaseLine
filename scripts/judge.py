@@ -44,7 +44,18 @@ def save_peak(peak: dict) -> None:
 
 
 def load_triggered() -> dict:
-    """発動済みTier履歴を読み込む。ファイルがなければ全ファンド空リストで返す。"""
+    """
+    発動済みTier履歴を読み込む。ファイルがなければ全ファンド空リストで返す。
+
+    各レコードは {"tier": int, "date": str|None, "invested": bool, "note": str|None,
+    "recovered": bool} 形式。「Tier到達（通知済み）」と「実際に投資したか」は別概念であり、
+    意図的に見送った場合は invested=False として記録する（重複通知防止のため、到達済み
+    自体は解除しない）。recovered は見送ったTierがその後回復したかどうかを表し、
+    update_recovery_status() / is_new_trigger() が再通知判定に使用する。
+
+    旧形式（プレーンな整数のリスト、例: [1, 2]）が残っている場合は自動的に新形式へ
+    移行する（invested=True・date=None として扱う。手動移行スクリプトは不要）。
+    """
     default = {"fang": [], "sox": [], "sp500": [], "orkan": []}
     if not TRIGGERED_FILE.exists():
         return default
@@ -54,6 +65,14 @@ def load_triggered() -> dict:
     for k in default:
         if k not in data:
             data[k] = []
+    # 旧形式（整数）から新形式（レコード）への自動移行、recoveredフィールドの補完
+    for fund_id, records in data.items():
+        data[fund_id] = [
+            {"tier": r, "date": None, "invested": True, "note": None, "recovered": False}
+            if isinstance(r, int)
+            else {**r, "recovered": r.get("recovered", False)}
+            for r in records
+        ]
     return data
 
 
@@ -280,20 +299,84 @@ def is_new_trigger(fund_id: str, current_tier: int, triggered: dict) -> bool:
     """
     新規Tier到達かどうかを判定する（重複通知防止）。
     current_tier が 0 の場合は False を返す。
+
+    - 投資済み(invested=True)のTierは、一度発動したら再通知しない（その枠の資金は使用済みのため）。
+    - 投資を見送った(invested=False)Tierは、いったんそのTierの水準を上回るまで回復してから
+      再びそのTierへ到達した場合にのみ「新規到達」として再通知する（同じ下落局面が続いている
+      間は再通知しない。回復判定は update_recovery_status() が行う）。
     """
     if current_tier == 0:
         return False
-    already_triggered = triggered.get(fund_id, [])
-    return current_tier not in already_triggered
+    record = next((r for r in triggered.get(fund_id, []) if r["tier"] == current_tier), None)
+    if record is None:
+        return True
+    if record.get("invested", True):
+        return False
+    return record.get("recovered", False)
 
 
-def record_trigger(fund_id: str, tier: int, triggered: dict) -> dict:
-    """発動済みTierを記録する（破壊的変更）。"""
+def update_recovery_status(fund_id: str, current_tier: int, triggered: dict) -> dict:
+    """
+    投資を見送った(invested=False)Tierについて、現在のTierがそのTier番号を下回っていれば
+    「回復した」とマークする（破壊的変更）。再びそのTierへ到達した際に is_new_trigger() が
+    再通知対象と判定できるようにするための状態更新。
+    """
+    for record in triggered.get(fund_id, []):
+        if not record.get("invested", True) and current_tier < record["tier"]:
+            record["recovered"] = True
+    return triggered
+
+
+def record_trigger(
+    fund_id: str,
+    tier: int,
+    triggered: dict,
+    date: str | None = None,
+    invested: bool = True,
+    note: str | None = None,
+) -> dict:
+    """
+    発動済みTierを記録する（破壊的変更）。
+    invested のデフォルトは True（Tier到達＝投資する運用が標準のため）。
+    意図的に投資を見送った場合は set_investment_status() で事後的に補正する。
+
+    同一Tierの記録が既に存在する場合（見送り後に回復して再到達したケース）は、
+    その記録を新しい到達として上書きする（recoveredフラグをリセット）。
+    """
     if fund_id not in triggered:
         triggered[fund_id] = []
-    if tier not in triggered[fund_id]:
-        triggered[fund_id].append(tier)
-        triggered[fund_id].sort()
+    existing = next((r for r in triggered[fund_id] if r["tier"] == tier), None)
+    if existing is None:
+        triggered[fund_id].append(
+            {"tier": tier, "date": date, "invested": invested, "note": note, "recovered": False}
+        )
+        triggered[fund_id].sort(key=lambda r: r["tier"])
+    else:
+        existing.update({"date": date, "invested": invested, "note": note, "recovered": False})
+    return triggered
+
+
+def set_investment_status(
+    fund_id: str,
+    tier: int,
+    triggered: dict,
+    invested: bool,
+    note: str | None = None,
+    date: str | None = None,
+) -> dict:
+    """
+    既に到達記録があるTierについて、実際に投資したかどうかを事後的に補正する（破壊的変更）。
+    date を指定すると、到達日が未記録（None）の場合に限り補完する（既存の記録は上書きしない）。
+    対象の記録が見つからない場合は変更しない。
+    """
+    for record in triggered.get(fund_id, []):
+        if record["tier"] == tier:
+            record["invested"] = invested
+            if note is not None:
+                record["note"] = note
+            if date is not None and record.get("date") is None:
+                record["date"] = date
+            break
     return triggered
 
 
@@ -418,11 +501,12 @@ def calc_remaining_funds(fund_id: str, triggered: dict, phase_key: str, settings
     """
     phase_funds = settings.get(f"funds_{phase_key}", {})
     tier_amounts = phase_funds.get("tier_amounts", {}).get(fund_id, {})
-    fired_tiers = triggered.get(fund_id, [])
+    fund_records = triggered.get(fund_id, [])
+    invested_tiers = {r["tier"] for r in fund_records if r.get("invested", True)}
 
     invested = sum(
         tier_amounts.get(f"tier{t}", 0)
-        for t in fired_tiers
+        for t in invested_tiers
     )
     total = sum(tier_amounts.values()) if tier_amounts else 0
     remaining = total - invested
@@ -433,7 +517,7 @@ def calc_remaining_funds(fund_id: str, triggered: dict, phase_key: str, settings
         amount = tier_amounts.get(key, 0)
         tier_detail[f"tier{i}"] = {
             "amount": amount,
-            "invested": i in fired_tiers,
+            "invested": i in invested_tiers,
         }
 
     return {

@@ -263,6 +263,7 @@ body{
           <ul style="padding-left: 0;">
             <li style="margin-bottom:8px;"><strong>最高値からの下落率:</strong> 2026-07-07以降に記録した最高値から、現在の価格が何％下がっているかを表します（例: <code>-15.0%</code>）。この下落が設定した各Tierに達するとシグナルが発動します。</li>
             <li style="margin-bottom:8px;"><strong>判定基準価格:</strong> 暴落初期や安値時の価格を基準とし、そこから<code>+5.0%</code>以上価格が急上昇した場合は、高値掴みを避けるため一時的に <code>WAIT</code> と判定されます。</li>
+            <li style="margin-bottom:8px;"><strong>価格決定のタイミング（重要）:</strong> 対象4銘柄はいずれも海外資産に投資するため「ブラインド方式」が適用され、発注日の翌営業日の海外市場終値をもとに基準価額が決定されます。発注は当日の締切後キャンセルできないため、Tier到達＝即発注が必ずしも最適とは限りません。</li>
             <li style="margin-bottom:8px;"><strong>注意:</strong> 実際の買付注文は、SBI証券等の画面から手動で発注する必要があります。</li>
           </ul>
         </div>
@@ -497,8 +498,8 @@ body{
     </div>
     <div class="market-grid">
       <div class="market-card">  <div class="market-card__label">VIX指数（恐怖指数）</div>  <div class="market-card__value">15.86</div>  <span class="status-badge vix-normal">通常</span>  <div class="market-card__note">市場は落ち着いた平常運転の状態です。</div>  <div class="market-card__date">2026-08-04 時点</div></div>
-<div class="market-card">  <div class="market-card__label">米10年国債利回り</div>  <div class="market-card__value">4.68<span class="market-card__unit">%</span></div>  <div class="market-card__direction"><span class="trend-icon">↗</span> 前回比 +0.061pt</div>  <div class="market-card__note">成長株（FANG+・SOXなど）は金利上昇局面で下がりやすい傾向があります。</div>  <div class="market-card__date">2026-08-04 時点</div></div>
-<div class="market-card">  <div class="market-card__label">USD/JPY（ドル円）</div>  <div class="market-card__value">157.39<span class="market-card__unit">円</span></div>  <div class="market-card__direction"><span class="trend-icon">↘</span> 前回比 -4.95円</div>  <div class="market-card__note">円高が進むと、米国株の実力が変わらなくても基準価額は下がって見えます。</div>  <div class="market-card__date">2026-08-04 時点</div></div>
+<div class="market-card">  <div class="market-card__label">米10年国債利回り</div>  <div class="market-card__value">4.68<span class="market-card__unit">%</span></div>  <div class="market-card__direction"><span class="trend-icon">→</span> 前回比 +0.000pt</div>  <div class="market-card__note">成長株（FANG+・SOXなど）は金利上昇局面で下がりやすい傾向があります。</div>  <div class="market-card__date">2026-08-04 時点</div></div>
+<div class="market-card">  <div class="market-card__label">USD/JPY（ドル円）</div>  <div class="market-card__value">157.46<span class="market-card__unit">円</span></div>  <div class="market-card__direction"><span class="trend-icon">↘</span> 前回比 -0.13円</div>  <div class="market-card__note">円高が進むと、米国株の実力が変わらなくても基準価額は下がって見えます。</div>  <div class="market-card__date">2026-08-04 時点</div></div>
     </div>
   </section>
 
@@ -516,7 +517,7 @@ body{
   <!-- ===== 残資金サマリー ===== -->
   <section class="section-panel">
     <div class="section-title">資金投入管理状況 &nbsp;<span style="font-size:12px; font-weight:normal; color:var(--text-mute);">(②期間)</span></div>
-    
+    <p style="font-size:11px; color:var(--text-mute); margin-bottom:4px;">※SOX半導体 Tier2 (2026-07-31) は投資を見送ったため、投入済み金額に含まれていません。</p>
     <div class="table-wrapper">
       <table class="funds-table">
         <thead>
@@ -529,7 +530,7 @@ body{
         </thead>
         <tbody>
           <tr>  <td><span style="color:#f97316; font-weight:600;">FANG+</span></td>  <td>0円</td>  <td>79,957円</td>  <td>79,957円</td></tr>
-<tr>  <td><span style="color:#a855f7; font-weight:600;">SOX半導体</span></td>  <td>79,958円</td>  <td>53,305円</td>  <td>133,263円</td></tr>
+<tr>  <td><span style="color:#a855f7; font-weight:600;">SOX半導体</span></td>  <td>33,316円</td>  <td>99,947円</td>  <td>133,263円</td></tr>
 <tr>  <td><span style="color:#3b82f6; font-weight:600;">S&P500</span></td>  <td>0円</td>  <td>223,880円</td>  <td>223,880円</td></tr>
 <tr>  <td><span style="color:#10b981; font-weight:600;">オルカン</span></td>  <td>0円</td>  <td>95,949円</td>  <td>95,949円</td></tr>
         </tbody>

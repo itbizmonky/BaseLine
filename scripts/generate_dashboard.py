@@ -352,6 +352,7 @@ def _build_funds_summary(triggered: dict, period_info: dict, settings: dict) -> 
 
     from judge import calc_remaining_funds
     rows = []
+    skip_notes = []
     for fund in settings["funds"]:
         fid = fund["id"]
         rem = calc_remaining_funds(fid, triggered, phase_key, settings)
@@ -363,6 +364,15 @@ def _build_funds_summary(triggered: dict, period_info: dict, settings: dict) -> 
             f'  <td>{rem["total"]:,}円</td>'
             f'</tr>'
         )
+        for record in triggered.get(fid, []):
+            if not record.get("invested", True):
+                date_str = record.get("date") or "-"
+                skip_notes.append(f'{fund["short_name"]} Tier{record["tier"]} ({date_str}) は投資を見送ったため、投入済み金額に含まれていません。')
+
+    if skip_notes:
+        skip_html = "".join(f'<p style="font-size:11px; color:var(--text-mute); margin-bottom:4px;">※{s}</p>' for s in skip_notes)
+        note_html += skip_html
+
     return "\n".join(rows), note_html
 
 
@@ -660,6 +670,7 @@ body{{
           <ul style="padding-left: 0;">
             <li style="margin-bottom:8px;"><strong>最高値からの下落率:</strong> {peak_start_date}以降に記録した最高値から、現在の価格が何％下がっているかを表します（例: <code>-15.0%</code>）。この下落が設定した各Tierに達するとシグナルが発動します。</li>
             <li style="margin-bottom:8px;"><strong>判定基準価格:</strong> 暴落初期や安値時の価格を基準とし、そこから<code>+5.0%</code>以上価格が急上昇した場合は、高値掴みを避けるため一時的に <code>WAIT</code> と判定されます。</li>
+            <li style="margin-bottom:8px;"><strong>価格決定のタイミング（重要）:</strong> 対象4銘柄はいずれも海外資産に投資するため「ブラインド方式」が適用され、発注日の翌営業日の海外市場終値をもとに基準価額が決定されます。発注は当日の締切後キャンセルできないため、Tier到達＝即発注が必ずしも最適とは限りません。</li>
             <li style="margin-bottom:8px;"><strong>注意:</strong> 実際の買付注文は、SBI証券等の画面から手動で発注する必要があります。</li>
           </ul>
         </div>

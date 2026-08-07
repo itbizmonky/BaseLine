@@ -33,6 +33,8 @@ def generate(
     settings: dict,
     triggered: dict,
     market_display: dict | None = None,
+    positions_display: dict | None = None,
+    positions_history: list[dict] | None = None,
 ) -> None:
     """ダッシュボードHTMLを生成して public/index.html に書き出す。"""
     PUBLIC_DIR.mkdir(exist_ok=True)
@@ -43,6 +45,9 @@ def generate(
     trend_html = _build_trend_summary(fund_results)
     funds_html, funds_note_html = _build_funds_summary(triggered, period_info, settings)
     market_html = _build_market_sentiment(market_display or {})
+    positions_html = _build_positions_section(positions_display or {})
+    usdjpy_rate = (market_display or {}).get("usdjpy", {}).get("value")
+    positions_chart_data = _build_positions_chart_data(positions_history or [], settings, usdjpy_rate)
 
     html = _render_html(
         today_str=today_str,
@@ -53,7 +58,9 @@ def generate(
         funds_html=funds_html,
         funds_note_html=funds_note_html,
         market_html=market_html,
+        positions_html=positions_html,
         chart_data_json=json.dumps(chart_data, ensure_ascii=False),
+        positions_chart_data_json=json.dumps(positions_chart_data, ensure_ascii=False),
         settings=settings,
     )
 
@@ -111,6 +118,48 @@ def _build_chart_data(history: list[dict], settings: dict, peak: dict) -> dict:
         "labels": labels,
         "datasets": datasets,
         "tier_lines": tier_lines,
+    }
+
+
+def _build_positions_chart_data(positions_history: list[dict], settings: dict, usdjpy_rate: float | None) -> dict:
+    """
+    保有ポジション（Tier投資対象外）の推移チャートデータを構築する。
+    USD建て銘柄（テスラ等）は、現在のUSD/JPYレートで一律換算した近似値をプロットする
+    （為替レートの日次履歴は保持していないため、過去分も現在レートで換算する近似）。
+    """
+    items = settings.get("positions", {}).get("items", [])
+    recent = positions_history[-180:] if len(positions_history) > 180 else positions_history
+    labels = [r["date"] for r in recent]
+
+    datasets = []
+    cost_lines = {}
+    for item in items:
+        pid = item["id"]
+        currency = item.get("currency", "JPY")
+        rate = usdjpy_rate if (currency == "USD" and usdjpy_rate) else 1.0
+        data_points = [
+            (r.get(pid) * rate) if r.get(pid) is not None else None
+            for r in recent
+        ]
+        datasets.append({
+            "id": pid,
+            "label": item.get("short_name", pid),
+            "data": data_points,
+            "borderColor": item.get("color", "#94a3b8"),
+            "backgroundColor": item.get("color", "#94a3b8") + "20",
+            "borderWidth": 2,
+            "pointRadius": 0,
+            "tension": 0.3,
+            "fill": False,
+        })
+        cost_basis = item.get("cost_basis", 0)
+        cost_lines[pid] = round(cost_basis * rate, 2)
+
+    return {
+        "labels": labels,
+        "datasets": datasets,
+        "cost_lines": cost_lines,
+        "is_jpy_converted": usdjpy_rate is not None,
     }
 
 
@@ -336,6 +385,41 @@ def _build_market_sentiment(market_display: dict) -> str:
     return "\n".join(cards)
 
 
+def _build_positions_section(positions_display: dict) -> str:
+    """
+    保有ポジション（Tier投資対象外・監視専用）カードのHTMLを生成する。
+    含み損益（現在価格と取得単価の差）を表示するだけで、BUY/WAIT判定には使用しない。
+    """
+    if not positions_display:
+        return '<div class="market-empty">保有ポジションのデータを準備中です。次回の自動実行後に表示されます。</div>'
+
+    cards = []
+    for p in positions_display.values():
+        level = p.get("level", {})
+        currency = p.get("currency", "JPY")
+        if currency == "USD":
+            value_str = f"{p['value']:,.2f} USD"
+            jpy_note = f'<div class="market-card__note">約{p["value_jpy"]:,.0f}円換算</div>'
+            cost_str = f"{p['cost_basis']:,.2f} USD"
+        else:
+            value_str = f"{p['value']:,.0f}円"
+            jpy_note = ""
+            cost_str = f"{p['cost_basis']:,.0f}円"
+
+        cards.append(
+            f'<div class="market-card" style="border-left: 3px solid {p.get("color", "#94a3b8")}">'
+            f'  <div class="market-card__label">{p["short_name"]}</div>'
+            f'  <div class="market-card__value">{value_str}</div>'
+            f'  {jpy_note}'
+            f'  <span class="status-badge {level.get("css", "pos-neutral")}">{level.get("emoji", "")} {level.get("label", "-")}</span>'
+            f'  <div class="market-card__note">取得単価: {cost_str} ／ 含み損益: {p["ratio"]:+.1f}%</div>'
+            f'  <div class="market-card__date">{p.get("date", "-")} 時点</div>'
+            f'</div>'
+        )
+
+    return "\n".join(cards)
+
+
 def _build_funds_summary(triggered: dict, period_info: dict, settings: dict) -> tuple[str, str]:
     phase_key = period_info.get("phase", "phase2")
     is_fallback = phase_key not in ("phase2", "phase3")
@@ -389,7 +473,9 @@ def _render_html(
     funds_html: str,
     funds_note_html: str,
     market_html: str,
+    positions_html: str,
     chart_data_json: str,
+    positions_chart_data_json: str,
     settings: dict,
 ) -> str:
     phase_label = period_info.get("label", "-")
@@ -397,6 +483,11 @@ def _render_html(
     baseline_date = settings.get("baseline", {}).get("date", "2026-07-07")
     peak_start_date = settings.get("peak_start_date", "2026-08-01")
     phase_type = period_info.get("phase", "none")
+
+    positions_tabs = "".join(
+        f'<button class="chart-tab" data-position="{item["id"]}">{item.get("short_name", item["id"])}</button>'
+        for item in settings.get("positions", {}).get("items", [])
+    )
 
     if phase_type == "before_start":
         period_display_str = f"📅 状態: ②期間開始まであと{days_remaining}日"
@@ -516,6 +607,10 @@ body{{
 .vix-caution{{ background: rgba(245,158,11,0.15); color: var(--yellow); border-color: rgba(245,158,11,0.3); }}
 .vix-fear{{ background: rgba(249,115,22,0.18); color: #f97316; border-color: rgba(249,115,22,0.35); box-shadow: 0 0 10px rgba(249,115,22,0.3); }}
 .vix-crash{{ background: rgba(239,68,68,0.18); color: var(--red); border-color: rgba(239,68,68,0.35); box-shadow: var(--red-glow); }}
+.pos-great, .pos-good{{ background: rgba(16,185,129,0.15); color: var(--green); border-color: rgba(16,185,129,0.3); box-shadow: var(--green-glow); }}
+.pos-neutral{{ background: rgba(255,255,255,0.05); color: var(--text-mute); border-color: rgba(255,255,255,0.05); }}
+.pos-caution{{ background: rgba(245,158,11,0.15); color: var(--yellow); border-color: rgba(245,158,11,0.3); box-shadow: var(--yellow-glow); }}
+.pos-warning{{ background: rgba(239,68,68,0.15); color: var(--red); border-color: rgba(239,68,68,0.3); box-shadow: var(--red-glow); }}
 
 /* ===== Neumorphic Table ===== */
 .table-wrapper{{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--radius); padding: 12px; overflow-x: auto; }}
@@ -671,6 +766,7 @@ body{{
             <li style="margin-bottom:8px;"><strong>最高値からの下落率:</strong> {peak_start_date}以降に記録した最高値から、現在の価格が何％下がっているかを表します（例: <code>-15.0%</code>）。この下落が設定した各Tierに達するとシグナルが発動します。</li>
             <li style="margin-bottom:8px;"><strong>判定基準価格:</strong> 暴落初期や安値時の価格を基準とし、そこから<code>+5.0%</code>以上価格が急上昇した場合は、高値掴みを避けるため一時的に <code>WAIT</code> と判定されます。</li>
             <li style="margin-bottom:8px;"><strong>価格決定のタイミング（重要）:</strong> 対象4銘柄はいずれも海外資産に投資するため「ブラインド方式」が適用され、発注日の翌営業日の海外市場終値をもとに基準価額が決定されます。発注は当日の締切後キャンセルできないため、Tier到達＝即発注が必ずしも最適とは限りません。</li>
+            <li style="margin-bottom:8px;"><strong>保有ポジション（監視専用）について:</strong> ページ下部の「保有ポジション」は、上記のTier判定とは別枠です。階層的な追加投資の対象ではなく、取得単価との差（含み損益）を表示するだけの監視専用の項目です。</li>
             <li style="margin-bottom:8px;"><strong>注意:</strong> 実際の買付注文は、SBI証券等の画面から手動で発注する必要があります。</li>
           </ul>
         </div>
@@ -772,6 +868,22 @@ body{{
           {funds_html}
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- ===== 保有ポジション（監視専用・Tier対象外） ===== -->
+  <section class="section-panel">
+    <div class="section-title">📦 保有ポジション（監視専用）</div>
+    <p class="market-disclaimer">この銘柄は暴落時の階層的追加投資（Tier）の対象ではありません。取得単価との差（含み損益）を監視・通知するだけの保有ポジションです。</p>
+    <div class="market-grid">
+      {positions_html}
+    </div>
+    <div class="chart-tabs" id="positionsChartTabs" style="margin-top:20px;">
+      <button class="chart-tab active" data-position="all">全ポジション</button>
+      {positions_tabs}
+    </div>
+    <div class="chart-wrapper">
+      <canvas id="positionsChart"></canvas>
     </div>
   </section>
 
@@ -901,12 +1013,76 @@ function renderChart(fundFilter = 'all') {{
 document.getElementById('chartTabs').addEventListener('click', (e) => {{
   const btn = e.target.closest('.chart-tab');
   if (!btn) return;
-  document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#chartTabs .chart-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderChart(btn.dataset.fund);
 }});
 
 renderChart('all');
+
+// ===== 保有ポジション（監視専用）チャート =====
+const POSITIONS_RAW_DATA = {positions_chart_data_json};
+let positionsChartInstance = null;
+
+function renderPositionsChart(positionFilter = 'all') {{
+  const canvas = document.getElementById('positionsChart');
+  if (!canvas || !POSITIONS_RAW_DATA.datasets || POSITIONS_RAW_DATA.datasets.length === 0) return;
+  const ctx = canvas.getContext('2d');
+  const datasets = POSITIONS_RAW_DATA.datasets
+    .filter(ds => positionFilter === 'all' || ds.id === positionFilter)
+    .map(ds => ({{ ...ds, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 6, tension: 0.25 }}));
+
+  if (positionsChartInstance) {{
+    positionsChartInstance.data.datasets = datasets;
+    positionsChartInstance.update('active');
+    return;
+  }}
+
+  positionsChartInstance = new Chart(ctx, {{
+    type: 'line',
+    data: {{ labels: POSITIONS_RAW_DATA.labels, datasets }},
+    options: {{
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {{ duration: 500, easing: 'easeOutQuart' }},
+      interaction: {{ mode: 'index', intersect: false }},
+      plugins: {{
+        legend: {{
+          display: positionFilter === 'all',
+          position: 'top',
+          labels: {{ color: '#94a3b8', font: {{ size: 11, family: 'Inter' }}, boxWidth: 12, usePointStyle: true }}
+        }},
+        tooltip: {{
+          backgroundColor: 'rgba(11, 13, 20, 0.95)',
+          titleColor: '#94a3b8',
+          bodyColor: '#f8fafc',
+          borderColor: 'rgba(255,255,255,0.08)',
+          borderWidth: 1,
+          padding: 10,
+          callbacks: {{
+            label: (item) => `  ${{item.dataset.label}}: ${{item.raw !== null ? item.raw.toLocaleString() + '円' : '-'}}`,
+          }},
+        }},
+      }},
+      scales: {{
+        x: {{ grid: {{ color: 'rgba(255,255,255,0.02)' }}, ticks: {{ color: '#64748b', font: {{ size: 9, family: 'Inter' }}, maxTicksLimit: 10 }} }},
+        y: {{ grid: {{ color: 'rgba(255,255,255,0.02)' }}, ticks: {{ color: '#64748b', font: {{ size: 9, family: 'Inter' }}, callback: (v) => v !== null ? v.toLocaleString() + '円' : '' }} }},
+      }},
+    }},
+  }});
+}}
+
+const positionsChartTabsEl = document.getElementById('positionsChartTabs');
+if (positionsChartTabsEl) {{
+  positionsChartTabsEl.addEventListener('click', (e) => {{
+    const btn = e.target.closest('.chart-tab');
+    if (!btn) return;
+    document.querySelectorAll('#positionsChartTabs .chart-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderPositionsChart(btn.dataset.position);
+  }});
+}}
+renderPositionsChart('all');
 </script>
 </body>
 </html>

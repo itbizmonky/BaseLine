@@ -110,5 +110,38 @@
       "caution": 30,
       "fear": 40
     }
+  },
+  "positions": {
+    "_comment": "Tier投資対象ではない、監視専用の保有ポジション（含み損益の追跡のみ）。BUY/WAIT判定には使用しない。LINE日次サマリーに追記して通知する",
+    "enabled": true,
+    "items": [
+      {
+        "id": "newnisa_orkan",
+        "name": "はじめてのNISA・全世界株式インデックス（オール・カントリー）",
+        "short_name": "はじめてのNISA全世界株式",
+        "company": "野村アセットマネジメント",
+        "fund_code": "01312237",
+        "source": "nikkei_fund",
+        "currency": "JPY",
+        "cost_basis": 19818,
+        "color": "#eab308"
+      },
+      {
+        "id": "tesla",
+        "name": "テスラ",
+        "short_name": "テスラ",
+        "ticker": "TSLA",
+        "source": "yahoo_us_stock",
+        "currency": "USD",
+        "cost_basis": 317.00,
+        "color": "#e11d48"
+      }
+    ],
+    "gain_loss_thresholds": {
+      "great": 10,
+      "good": 0,
+      "caution": -10,
+      "warning": -20
+    }
   }
 }

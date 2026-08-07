@@ -38,11 +38,14 @@
 │   ├── history.csv             # 日次基準価額履歴（自動蓄積）
 │   ├── peak.json               # 設定来高値記録（自動更新）
 │   ├── triggered.json          # 発動済みTier記録（重複通知防止）
-│   └── market.json             # 市場心理指標（VIX/米10年金利/USD-JPY）の最新値（自動更新）
+│   ├── market.json             # 市場心理指標（VIX/米10年金利/USD-JPY）の最新値（自動更新）
+│   ├── positions.json          # 保有ポジション（監視専用）の最新値（自動更新）
+│   └── positions_history.csv   # 保有ポジションの日次価格履歴（自動蓄積）
 ├── scripts/
 │   ├── monitor.py              # メイン実行スクリプト
 │   ├── fetch_nav.py            # 基準価額取得
 │   ├── market_data.py          # 市場心理指標（VIX/米10年金利/USD-JPY）取得・判定
+│   ├── positions.py            # 保有ポジション（Tier投資対象外）取得・含み損益判定
 │   ├── judge.py                # 判定ロジック
 │   ├── notify.py               # LINE通知
 │   └── generate_dashboard.py   # HTMLダッシュボード生成
@@ -142,6 +145,9 @@ GitHubリポジトリの **Settings → Secrets and variables → Actions** を�
   - 変更内容は次回の `monitor.py` 実行時に `.github/workflows/monitor.yml` のcron設定へ自動反映されます（手動でcronを編集する必要はありません）
 - 市場心理指標の取得元URL・VIXのしきい値（`market_indicators.sources` / `market_indicators.vix_thresholds`）
   - `market_indicators.enabled: false` にすると市場心理セクション自体を無効化できます
+- 保有ポジション（監視専用）の銘柄・取得単価・含み損益の警戒しきい値（`positions.items` / `positions.gain_loss_thresholds`）
+  - `positions.enabled: false` にすると保有ポジションセクション自体を無効化できます
+  - `items`の`source`に`nikkei_fund`（日経電子版の投資信託）または`yahoo_us_stock`（Yahoo!ファイナンス米国株、現状テスラ専用）を指定して取得元を切り替えます
 
 ---
 
@@ -150,6 +156,7 @@ GitHubリポジトリの **Settings → Secrets and variables → Actions** を�
 - 本ツールは投資判断の自動化を行いません。**実際の買付注文はSBI証券での手動操作**です。
 - データ取得には 日本経済新聞 電子版（日経電子版）の投資信託ページを利用しています。市場心理指標（VIX・米10年国債利回り・USD/JPY）も同じく日経電子版から取得します。
 - 市場心理指標はダッシュボード（チャートページ）のみに参考情報として表示され、**LINE通知には含まれません**。BUY/WAIT等の判定は引き続き価格（Tier）のみで行われ、市場心理指標が判定ロジックに影響することはありません。
+- 保有ポジション（監視専用。現状: はじめてのNISA・全世界株式インデックス／テスラ）は、暴落時の階層的追加投資（Tier）の対象ではありません。現在価格と取得単価の差（含み損益）を表示するだけで、BUY/WAIT判定ロジックには一切影響しません。米国株（テスラ）はYahoo!ファイナンスから取得しており（15分ディレイ）、日経電子版のデータとは取得元が異なります。米国株式市場も土日は休場のため、既存4銘柄と同じく平日のみ実行されます。
 - 設定来高値（ピーク）の記録は `config/settings.json` の `peak_start_date`（既定: 2026-07-07、購入判定基準日 `baseline.date` と同一日）以降のみ行われます。それより前は下落率・Tierは計測されません。`peak_start_date`を過去日付に変更した場合、`history.csv`に記録済みの履歴も自動的に遡って確認し、本日の値より高い記録があればそちらを初期ピークとして採用します。
 - ピーク追跡の開始（`peak_start_date`）と実際の資金投入期間（`periods.phase2.start`、既定: 2026-08-01）は別の設定です。ピーク追跡開始後は、資金投入期間が始まる前（「②期間開始前」表示中）でもTier到達・LINE通知が発生し得ます。
 - 実行日時の判定はすべてJST（日本標準時）基準です。GitHub Actionsの実行環境はUTCですが、スクリプト内でJSTに変換して日付・曜日を判定するため、土日（JST基準）は自動的に処理をスキップします。

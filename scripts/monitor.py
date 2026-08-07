@@ -35,6 +35,11 @@ from market_data import (
     fetch_all_market_data, load_market, save_market, update_market,
     judge_vix_level, calc_direction,
 )
+from positions import (
+    fetch_all_positions, load_positions, save_positions, update_positions,
+    load_positions_history, append_positions_history,
+    calc_gain_loss_ratio, judge_gain_loss_level,
+)
 from judge import (
     load_peak, save_peak,
     load_triggered, save_triggered,
@@ -190,6 +195,60 @@ def main(dry_run: bool = False) -> None:
         logger.warning(f"市場心理指標の取得中にエラーが発生しましたが処理を続行します: {e}")
 
     # ----------------------------------------------------------
+    # 2.6 保有ポジションの取得（Tier投資対象外の監視専用銘柄。Tier判定・通知には一切影響させない）
+    # ----------------------------------------------------------
+    positions_display = {}
+    try:
+        positions_settings = settings.get("positions", {})
+        if positions_settings.get("enabled", True):
+            items = positions_settings.get("items", [])
+            position_ids = [item["id"] for item in items]
+            gain_loss_thresholds = positions_settings.get("gain_loss_thresholds")
+            usdjpy_rate = market_display.get("usdjpy", {}).get("value")
+
+            old_positions = load_positions()
+            fetched_positions = fetch_all_positions(settings)
+
+            for item in items:
+                pid = item["id"]
+                cost_basis = item.get("cost_basis", 0)
+                currency = item.get("currency", "JPY")
+
+                cur_value = fetched_positions.get(pid)
+                if cur_value is None and pid in old_positions:
+                    cur_value = old_positions[pid]["value"]
+                    record_date = old_positions[pid]["date"]
+                else:
+                    record_date = today_str
+
+                if cur_value is None:
+                    continue
+
+                ratio = calc_gain_loss_ratio(cur_value, cost_basis)
+                value_jpy = cur_value * usdjpy_rate if currency == "USD" and usdjpy_rate else cur_value
+
+                positions_display[pid] = {
+                    "name": item.get("name", pid),
+                    "short_name": item.get("short_name", pid),
+                    "value": cur_value,
+                    "value_jpy": value_jpy,
+                    "cost_basis": cost_basis,
+                    "currency": currency,
+                    "date": record_date,
+                    "ratio": ratio,
+                    "level": judge_gain_loss_level(ratio, gain_loss_thresholds),
+                    "color": item.get("color", "#94a3b8"),
+                }
+
+            new_positions = update_positions(old_positions, fetched_positions, today_str)
+            save_positions(new_positions)
+            append_positions_history(today_str, fetched_positions, position_ids)
+            logger.info(f"保有ポジション: {fetched_positions}")
+    except Exception as e:
+        # 参考情報の取得失敗でTier判定・通知が止まらないよう、例外を握りつぶす
+        logger.warning(f"保有ポジションの取得中にエラーが発生しましたが処理を続行します: {e}")
+
+    # ----------------------------------------------------------
     # 3. 取得失敗チェック
     # ----------------------------------------------------------
     failed_funds = [fid for fid, nav in navs.items() if nav is None]
@@ -319,7 +378,7 @@ def main(dry_run: bool = False) -> None:
     # 6.5 日次サマリー通知
     # ----------------------------------------------------------
     if not dry_run and notifications_enabled:
-        notify_daily_summary(today_str, period_info, fund_results, dashboard_url)
+        notify_daily_summary(today_str, period_info, fund_results, dashboard_url, positions_display)
     else:
         logger.info("[DRY RUN or 通知OFF] デイリーサマリー通知をスキップ")
 
@@ -348,6 +407,8 @@ def main(dry_run: bool = False) -> None:
         settings=settings,
         triggered=triggered,
         market_display=market_display,
+        positions_display=positions_display,
+        positions_history=load_positions_history(),
     )
 
     logger.info(f"=== 暴落監視 完了: {today_str} ===")

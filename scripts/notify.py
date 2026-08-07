@@ -147,9 +147,11 @@ def build_daily_summary_message(
     period_info: dict,
     fund_results: list[dict],
     dashboard_url: str,
+    positions_display: dict | None = None,
 ) -> str:
     """
-    日次の監視サマリー通知
+    日次の監視サマリー通知。
+    positions_display（保有ポジション、Tier投資対象外）が渡された場合は末尾に追記する。
     """
     lines = [f"📊 【日次監視完了】{today_str}\n"]
     for r in fund_results:
@@ -163,7 +165,22 @@ def build_daily_summary_message(
             f"   最高値比: {format_drawdown(r['drawdown'])}\n"
             f"   基準日比: {r['baseline_ratio']:+.1f}% ({tier_str})"
         )
-    
+
+    if positions_display:
+        lines.append("\n📦 保有ポジション（監視専用・Tier対象外）")
+        for p in positions_display.values():
+            level = p.get("level", {})
+            emoji = level.get("emoji", "⚪")
+            label = level.get("label", "-")
+            unit = "USD" if p.get("currency") == "USD" else "円"
+            value_str = f"{p['value']:,.2f}{unit}" if unit == "USD" else f"{p['value']:,.0f}{unit}"
+            jpy_note = f"（約{p['value_jpy']:,.0f}円）" if p.get("currency") == "USD" else ""
+            lines.append(
+                f"{emoji} {p['short_name']}:\n"
+                f"   現在値: {value_str}{jpy_note}\n"
+                f"   含み損益: {p['ratio']:+.1f}% ({label})"
+            )
+
     phase_type = period_info.get('phase', 'none')
     days_rem = period_info.get('days_remaining', '-')
     if phase_type == 'before_start':

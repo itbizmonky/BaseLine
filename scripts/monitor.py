@@ -40,6 +40,7 @@ from positions import (
     load_positions_history, append_positions_history,
     calc_gain_loss_ratio, judge_gain_loss_level,
 )
+from purchase_history import load_purchase_history
 from judge import (
     load_peak, save_peak,
     load_triggered, save_triggered,
@@ -238,6 +239,8 @@ def main(dry_run: bool = False) -> None:
                     "ratio": ratio,
                     "level": judge_gain_loss_level(ratio, gain_loss_thresholds),
                     "color": item.get("color", "#94a3b8"),
+                    "purchase_date": item.get("purchase_date"),
+                    "purchase_amount": item.get("purchase_amount"),
                 }
 
             new_positions = update_positions(old_positions, fetched_positions, today_str)
@@ -409,6 +412,7 @@ def main(dry_run: bool = False) -> None:
         market_display=market_display,
         positions_display=positions_display,
         positions_history=load_positions_history(),
+        purchase_history=load_purchase_history(),
     )
 
     logger.info(f"=== 暴落監視 完了: {today_str} ===")

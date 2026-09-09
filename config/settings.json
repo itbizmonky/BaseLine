@@ -112,7 +112,7 @@
     }
   },
   "positions": {
-    "_comment": "Tier投資対象ではない、監視専用の保有ポジション（含み損益の追跡のみ）。BUY/WAIT判定には使用しない。LINE日次サマリーに追記して通知する",
+    "_comment": "Tier投資対象ではない、監視専用の保有ポジション（含み損益の追跡のみ）。BUY/WAIT判定には使用しない。LINE日次サマリーに追記して通知する。purchase_date/purchase_amountは任意項目（購入日・投入金額が分かっている場合のみ追加。ダッシュボードのカード表示・推移チャートのマーカーに使われるだけで、含み損益の計算には影響しない）",
     "enabled": true,
     "items": [
       {
@@ -124,6 +124,8 @@
         "source": "nikkei_fund",
         "currency": "JPY",
         "cost_basis": 19818,
+        "purchase_date": "2026-08-06",
+        "purchase_amount": 75000,
         "color": "#eab308"
       },
       {

@@ -35,11 +35,12 @@ def generate(
     market_display: dict | None = None,
     positions_display: dict | None = None,
     positions_history: list[dict] | None = None,
+    purchase_history: dict | None = None,
 ) -> None:
     """ダッシュボードHTMLを生成して public/index.html に書き出す。"""
     PUBLIC_DIR.mkdir(exist_ok=True)
 
-    chart_data = _build_chart_data(history, settings, peak)
+    chart_data = _build_chart_data(history, settings, peak, purchase_history)
     summary_html = _build_summary_table(fund_results, settings)
     cards_html = _build_fund_cards(fund_results, navs, peak, triggered, period_info, settings)
     trend_html = _build_trend_summary(fund_results)
@@ -75,12 +76,43 @@ def generate(
 # チャートデータ構築
 # ------------------------------------------------------------------
 
-def _build_chart_data(history: list[dict], settings: dict, peak: dict) -> dict:
+def _nearest_label_index(target_date: str | None, labels: list[str], label_index: dict, max_gap_days: int = 7) -> int | None:
+    """
+    target_date が labels に完全一致しない場合、最も近い日付にスナップしたインデックスを返す。
+    購入日が対象データの記録開始日の前後1〜数日ずれるケース（例: 保有ポジション追加初日は
+    前日分の履歴がまだない）を吸収するための補正。マーカーの日付・金額表示自体は変更せず、
+    グラフ上でどのラベル位置に打つかだけを調整する（NAV等のデータを捏造するものではない）。
+    差が max_gap_days を超える場合は表示対象外として None を返す。
+    """
+    if not target_date or not labels:
+        return None
+    exact = label_index.get(target_date)
+    if exact is not None:
+        return exact
+    try:
+        target = datetime.strptime(target_date, "%Y-%m-%d")
+    except ValueError:
+        return None
+    best_idx, best_diff = None, None
+    for i, d in enumerate(labels):
+        try:
+            diff = abs((datetime.strptime(d, "%Y-%m-%d") - target).days)
+        except ValueError:
+            continue
+        if best_diff is None or diff < best_diff:
+            best_idx, best_diff = i, diff
+    if best_idx is not None and best_diff <= max_gap_days:
+        return best_idx
+    return None
+
+
+def _build_chart_data(history: list[dict], settings: dict, peak: dict, purchase_history: dict | None = None) -> dict:
     fund_colors = {f["id"]: f["color"] for f in settings["funds"]}
     fund_names  = {f["id"]: f["short_name"] for f in settings["funds"]}
-    
+
     recent = history[-180:] if len(history) > 180 else history
     labels = [r["date"] for r in recent]
+    label_index = {d: i for i, d in enumerate(labels)}
 
     datasets = []
     for fund in settings["funds"]:
@@ -114,10 +146,30 @@ def _build_chart_data(history: list[dict], settings: dict, peak: dict) -> dict:
             "color": fund["color"],
         }
 
+    purchase_markers = {}
+    for fund in settings["funds"]:
+        fid = fund["id"]
+        records = (purchase_history or {}).get(fid, [])
+        markers = []
+        for r in records:
+            idx = _nearest_label_index(r["date"], labels, label_index)
+            if idx is None:
+                # 表示期間（直近180日）外、または近傍に記録がない場合はスキップ
+                continue
+            markers.append({
+                "index": idx,
+                "date": r["date"],
+                "price": r["price"],
+                "category": r.get("category", ""),
+                "amount": r.get("amount", 0),
+            })
+        purchase_markers[fid] = markers
+
     return {
         "labels": labels,
         "datasets": datasets,
         "tier_lines": tier_lines,
+        "purchase_markers": purchase_markers,
     }
 
 
@@ -130,9 +182,11 @@ def _build_positions_chart_data(positions_history: list[dict], settings: dict, u
     items = settings.get("positions", {}).get("items", [])
     recent = positions_history[-180:] if len(positions_history) > 180 else positions_history
     labels = [r["date"] for r in recent]
+    label_index = {d: i for i, d in enumerate(labels)}
 
     datasets = []
     cost_lines = {}
+    purchase_markers = {}
     for item in items:
         pid = item["id"]
         currency = item.get("currency", "JPY")
@@ -155,10 +209,23 @@ def _build_positions_chart_data(positions_history: list[dict], settings: dict, u
         cost_basis = item.get("cost_basis", 0)
         cost_lines[pid] = round(cost_basis * rate, 2)
 
+        purchase_date = item.get("purchase_date")
+        idx = _nearest_label_index(purchase_date, labels, label_index)
+        purchase_markers[pid] = (
+            {
+                "index": idx,
+                "date": purchase_date,
+                "price": cost_lines[pid],
+                "amount": item.get("purchase_amount"),
+            }
+            if idx is not None else None
+        )
+
     return {
         "labels": labels,
         "datasets": datasets,
         "cost_lines": cost_lines,
+        "purchase_markers": purchase_markers,
         "is_jpy_converted": usdjpy_rate is not None,
     }
 
@@ -406,6 +473,13 @@ def _build_positions_section(positions_display: dict) -> str:
             jpy_note = ""
             cost_str = f"{p['cost_basis']:,.0f}円"
 
+        purchase_note = ""
+        purchase_date = p.get("purchase_date")
+        if purchase_date:
+            purchase_amount = p.get("purchase_amount")
+            amount_str = f"{purchase_amount:,.0f}円" if purchase_amount else "-"
+            purchase_note = f'<div class="market-card__note">取得日: {purchase_date} ／ 投入金額: {amount_str}</div>'
+
         cards.append(
             f'<div class="market-card" style="border-left: 3px solid {p.get("color", "#94a3b8")}">'
             f'  <div class="market-card__label">{p["short_name"]}</div>'
@@ -413,6 +487,7 @@ def _build_positions_section(positions_display: dict) -> str:
             f'  {jpy_note}'
             f'  <span class="status-badge {level.get("css", "pos-neutral")}">{level.get("emoji", "")} {level.get("label", "-")}</span>'
             f'  <div class="market-card__note">取得単価: {cost_str} ／ 含み損益: {p["ratio"]:+.1f}%</div>'
+            f'  {purchase_note}'
             f'  <div class="market-card__date">{p.get("date", "-")} 時点</div>'
             f'</div>'
         )
@@ -917,8 +992,15 @@ function setupAccordion(toggleId, contentId) {{
 setupAccordion('guideToggle', 'guideContent');
 setupAccordion('marketGuideToggle', 'marketGuideContent');
 
+function purchaseMarkerColor(category) {{
+  if (category === 'Tier1') return '#eab308';
+  if (category === 'Tier2') return '#f97316';
+  if (category === 'Tier3') return '#ef4444';
+  return '#3b82f6';
+}}
+
 function buildDatasets(fundFilter) {{
-  return RAW_DATA.datasets
+  const priceDatasets = RAW_DATA.datasets
     .filter(ds => fundFilter === 'all' || ds.id === fundFilter)
     .map(ds => ({{
       ...ds,
@@ -929,6 +1011,52 @@ function buildDatasets(fundFilter) {{
       shadowColor: ds.borderColor,
       shadowBlur: 8,
     }}));
+
+  // 「全銘柄」表示時はTier閾値線・約定実績マーカーは描画しない（視認性を優先）
+  if (fundFilter === 'all') return priceDatasets;
+
+  const extra = [];
+
+  const tierInfo = RAW_DATA.tier_lines[fundFilter];
+  if (tierInfo) {{
+    tierInfo.tier_values.forEach((val, i) => {{
+      extra.push({{
+        label: `Tier${{i + 1}}閾値 (-${{tierInfo.tiers[i]}}%)`,
+        data: RAW_DATA.labels.map(() => val),
+        borderColor: tierInfo.color,
+        borderWidth: 1,
+        borderDash: [6, 4],
+        pointRadius: 0,
+        fill: false,
+        tension: 0,
+        shadowBlur: 0,
+        isTierLine: true,
+      }});
+    }});
+  }}
+
+  const markers = (RAW_DATA.purchase_markers && RAW_DATA.purchase_markers[fundFilter]) || [];
+  if (markers.length > 0) {{
+    const arr = new Array(RAW_DATA.labels.length).fill(null);
+    const meta = new Array(RAW_DATA.labels.length).fill(null);
+    markers.forEach(m => {{ arr[m.index] = m.price; meta[m.index] = m; }});
+    extra.push({{
+      label: '約定実績',
+      data: arr,
+      showLine: false,
+      pointStyle: 'star',
+      pointRadius: arr.map(v => v !== null ? 9 : 0),
+      pointHoverRadius: arr.map(v => v !== null ? 11 : 0),
+      pointBackgroundColor: meta.map(m => m ? purchaseMarkerColor(m.category) : 'transparent'),
+      pointBorderColor: '#fff',
+      pointBorderWidth: 1,
+      shadowBlur: 0,
+      isPurchaseMarker: true,
+      markerMeta: meta,
+    }});
+  }}
+
+  return [...priceDatasets, ...extra];
 }}
 
 function renderChart(fundFilter = 'all') {{
@@ -980,15 +1108,28 @@ function renderChart(fundFilter = 'all') {{
         }},
         tooltip: {{
           backgroundColor: 'rgba(11, 13, 20, 0.95)',
-          titleColor: '#94a3b8', 
+          titleColor: '#94a3b8',
           bodyColor: '#f8fafc',
-          borderColor: 'rgba(255,255,255,0.08)', 
+          borderColor: 'rgba(255,255,255,0.08)',
           borderWidth: 1,
           padding: 10,
           bodyFont: {{ family: 'Inter' }},
           titleFont: {{ family: 'Inter' }},
+          filter: (item) => item.raw !== null && item.raw !== undefined,
           callbacks: {{
-            label: (item) => `  ${{item.dataset.label}}: ${{item.raw !== null ? item.raw.toLocaleString() + '円' : '-'}}`,
+            label: (item) => {{
+              if (item.dataset.isPurchaseMarker) {{
+                const m = item.dataset.markerMeta[item.dataIndex];
+                if (!m) return null;
+                return [
+                  `★ 約定日: ${{m.date}}`,
+                  `　約定単価: ${{m.price.toLocaleString()}}円`,
+                  `　区分: ${{m.category}}`,
+                  `　投入金額: ${{(m.amount || 0).toLocaleString()}}円`,
+                ];
+              }}
+              return `  ${{item.dataset.label}}: ${{item.raw !== null ? item.raw.toLocaleString() + '円' : '-'}}`;
+            }},
           }},
         }},
       }},
@@ -999,10 +1140,10 @@ function renderChart(fundFilter = 'all') {{
         }},
         y: {{
           grid: {{ color: 'rgba(255,255,255,0.02)' }},
-          ticks: {{ 
-            color: '#64748b', 
+          ticks: {{
+            color: '#64748b',
             font: {{ size: 9, family: 'Inter' }},
-            callback: (v) => v !== null ? v.toLocaleString() + '円' : '' 
+            callback: (v) => v !== null ? v.toLocaleString() + '円' : ''
           }},
         }},
       }},
@@ -1024,13 +1165,39 @@ renderChart('all');
 const POSITIONS_RAW_DATA = {positions_chart_data_json};
 let positionsChartInstance = null;
 
+function buildPositionsDatasets(positionFilter) {{
+  const priceDatasets = POSITIONS_RAW_DATA.datasets
+    .filter(ds => positionFilter === 'all' || ds.id === positionFilter)
+    .map(ds => ({{ ...ds, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 6, tension: 0.25 }}));
+
+  if (positionFilter === 'all') return priceDatasets;
+
+  const marker = POSITIONS_RAW_DATA.purchase_markers && POSITIONS_RAW_DATA.purchase_markers[positionFilter];
+  if (!marker) return priceDatasets;
+
+  const arr = new Array(POSITIONS_RAW_DATA.labels.length).fill(null);
+  arr[marker.index] = marker.price;
+  const extra = {{
+    label: '約定実績',
+    data: arr,
+    showLine: false,
+    pointStyle: 'star',
+    pointRadius: arr.map(v => v !== null ? 9 : 0),
+    pointHoverRadius: arr.map(v => v !== null ? 11 : 0),
+    pointBackgroundColor: '#eab308',
+    pointBorderColor: '#fff',
+    pointBorderWidth: 1,
+    isPurchaseMarker: true,
+    markerMeta: marker,
+  }};
+  return [...priceDatasets, extra];
+}}
+
 function renderPositionsChart(positionFilter = 'all') {{
   const canvas = document.getElementById('positionsChart');
   if (!canvas || !POSITIONS_RAW_DATA.datasets || POSITIONS_RAW_DATA.datasets.length === 0) return;
   const ctx = canvas.getContext('2d');
-  const datasets = POSITIONS_RAW_DATA.datasets
-    .filter(ds => positionFilter === 'all' || ds.id === positionFilter)
-    .map(ds => ({{ ...ds, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 6, tension: 0.25 }}));
+  const datasets = buildPositionsDatasets(positionFilter);
 
   if (positionsChartInstance) {{
     positionsChartInstance.data.datasets = datasets;
@@ -1059,8 +1226,18 @@ function renderPositionsChart(positionFilter = 'all') {{
           borderColor: 'rgba(255,255,255,0.08)',
           borderWidth: 1,
           padding: 10,
+          filter: (item) => item.raw !== null && item.raw !== undefined,
           callbacks: {{
-            label: (item) => `  ${{item.dataset.label}}: ${{item.raw !== null ? item.raw.toLocaleString() + '円' : '-'}}`,
+            label: (item) => {{
+              if (item.dataset.isPurchaseMarker) {{
+                const m = item.dataset.markerMeta;
+                return [
+                  `★ 取得日: ${{m.date}}`,
+                  `　投入金額: ${{(m.amount || 0).toLocaleString()}}円`,
+                ];
+              }}
+              return `  ${{item.dataset.label}}: ${{item.raw !== null ? item.raw.toLocaleString() + '円' : '-'}}`;
+            }},
           }},
         }},
       }},

@@ -40,12 +40,14 @@
 │   ├── triggered.json          # 発動済みTier記録（重複通知防止）
 │   ├── market.json             # 市場心理指標（VIX/米10年金利/USD-JPY）の最新値（自動更新）
 │   ├── positions.json          # 保有ポジション（監視専用）の最新値（自動更新）
-│   └── positions_history.csv   # 保有ポジションの日次価格履歴（自動蓄積）
+│   ├── positions_history.csv   # 保有ポジションの日次価格履歴（自動蓄積）
+│   └── purchase_history.json   # Tier到達時の手動購入実績（運用者が手動追記）
 ├── scripts/
 │   ├── monitor.py              # メイン実行スクリプト
 │   ├── fetch_nav.py            # 基準価額取得
 │   ├── market_data.py          # 市場心理指標（VIX/米10年金利/USD-JPY）取得・判定
 │   ├── positions.py            # 保有ポジション（Tier投資対象外）取得・含み損益判定
+│   ├── purchase_history.py     # 手動購入実績（約定実績）の読み込み
 │   ├── judge.py                # 判定ロジック
 │   ├── notify.py               # LINE通知
 │   └── generate_dashboard.py   # HTMLダッシュボード生成
@@ -148,6 +150,8 @@ GitHubリポジトリの **Settings → Secrets and variables → Actions** を�
 - 保有ポジション（監視専用）の銘柄・取得単価・含み損益の警戒しきい値（`positions.items` / `positions.gain_loss_thresholds`）
   - `positions.enabled: false` にすると保有ポジションセクション自体を無効化できます
   - `items`の`source`に`nikkei_fund`（日経電子版の投資信託）または`yahoo_us_stock`（Yahoo!ファイナンス米国株、現状テスラ専用）を指定して取得元を切り替えます
+  - `items`の各銘柄に`purchase_date`（例: `"2026-08-06"`）・`purchase_amount`（例: `75000`）を追加すると、ダッシュボードのカードに取得日・投入金額が表示され、推移チャート（該当銘柄のタブ選択時のみ）にも星マーカーで表示されます。任意項目のため、購入日が不明な銘柄は省略して構いません
+- Tier到達時の手動購入実績（いつ・いくらで買ったか）は `data/purchase_history.json` に銘柄IDごとのリストとして手動で追記します。1件は `{"date": "2026-08-03", "price": 42266, "category": "Tier1", "amount": 33316}` の形式（`category`は`Tier1`〜`Tier3`のほか「定期積立」等の自由記述も可）。追記すると、次回のダッシュボード生成時に該当銘柄の推移チャート（該当銘柄のタブ選択時のみ。Tier1/2/3の閾値の破線とあわせて表示）に星マーカーとして自動反映されます。マーカーにカーソルを合わせると約定日・単価・区分・投入金額がツールチップで確認できます
 
 ---
 

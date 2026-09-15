@@ -10,10 +10,10 @@
     },
     {
       "tier": 2,
-      "date": "2026-07-31",
-      "invested": false,
-      "note": "翌営業日の株価上昇を見込み、意図的に投資を見送った（結果的に的中）",
-      "recovered": true
+      "date": "2026-09-16",
+      "invested": true,
+      "note": null,
+      "recovered": false
     }
   ],
   "sp500": [],

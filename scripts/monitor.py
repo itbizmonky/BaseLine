@@ -46,7 +46,7 @@ from judge import (
     load_triggered, save_triggered,
     load_history, append_history,
     update_peak,
-    calc_drawdown, judge_tier, calc_baseline_ratio, judge_decision,
+    calc_drawdown, judge_tier, calc_baseline_ratio, format_baseline_ratio, judge_decision,
     is_new_trigger, record_trigger, update_recovery_status,
     detect_period, calc_trend, calc_remaining_funds,
 )
@@ -254,6 +254,8 @@ def main(dry_run: bool = False) -> None:
     # ----------------------------------------------------------
     # 3. 取得失敗チェック
     # ----------------------------------------------------------
+    # 新規購入停止銘柄（active=false）は通知対象外。取得・表示は継続する
+    inactive_ids = {f["id"] for f in funds if not f.get("active", True)}
     failed_funds = [fid for fid, nav in navs.items() if nav is None]
     if failed_funds:
         failed_names = [
@@ -261,8 +263,13 @@ def main(dry_run: bool = False) -> None:
             for fid in failed_funds
         ]
         logger.warning(f"取得失敗ファンド: {failed_names}")
-        if not dry_run and notifications_enabled:
-            notify_fetch_error(failed_names, today_str, dashboard_url)
+        notify_failed_names = [
+            next((f["short_name"] for f in funds if f["id"] == fid), fid)
+            for fid in failed_funds
+            if fid not in inactive_ids
+        ]
+        if notify_failed_names and not dry_run and notifications_enabled:
+            notify_fetch_error(notify_failed_names, today_str, dashboard_url)
 
     # 全銘柄失敗の場合は終了
     if all(v is None for v in navs.values()):
@@ -301,6 +308,8 @@ def main(dry_run: bool = False) -> None:
                 "drawdown": 0.0,
                 "trend_5d": "→",
                 "trend_20d": "→",
+                "active": fund.get("active", True),
+                **({} if fund.get("active", True) else {"decision": "INACTIVE"}),
             })
             continue
 
@@ -318,26 +327,32 @@ def main(dry_run: bool = False) -> None:
             drawdown = calc_drawdown(nav, peak_val)
             tier = judge_tier(drawdown, fund["tiers"])
 
-        # 基準日比・購入判定
+        # 基準日比・購入判定（基準日価格が未設定の銘柄は基準日比を算出せずNone＝表示は「-」）
+        active = fund.get("active", True)
         baseline_nav = settings.get("baseline", {}).get("prices", {}).get(fid, 0)
         tolerance_pct = settings.get("baseline", {}).get("initial_price_tolerance_percent", 5.0)
-        baseline_ratio = calc_baseline_ratio(nav, baseline_nav)
+        baseline_ratio = calc_baseline_ratio(nav, baseline_nav) if baseline_nav > 0 else None
         is_hwm = (peak_val is not None and drawdown == 0.0)
         decision = judge_decision(tier, nav, baseline_nav, tolerance_pct, is_hwm)
+        if not active:
+            decision = "INACTIVE"
 
         peak_val_str = f"{peak_val:,.0f}円" if peak_val is not None else "未記録"
         logger.info(
             f"{fund['short_name']}: NAV={nav:,.0f}円 / 高値={peak_val_str} / "
-            f"下落率={drawdown:.2f}% / 基準日比={baseline_ratio:+.2f}% / "
+            f"下落率={drawdown:.2f}% / 基準日比={format_baseline_ratio(baseline_ratio, 2)} / "
             f"Tier={tier} / 判定={decision}"
         )
 
+        # 新規購入停止銘柄は、Tier到達の通知・記録・回復判定のいずれも行わない
+        # （評価額把握のための表示のみ継続する）。
         # 見送ったTierが回復した（現在のTierが記録より低い）かどうかを毎回更新する。
         # これにより、回復後に再び同じTierへ到達した際に新規到達として再通知できる。
-        triggered = update_recovery_status(fid, tier, triggered)
+        if active:
+            triggered = update_recovery_status(fid, tier, triggered)
 
         # 新規Tier到達 → LINE通知
-        if is_new_trigger(fid, tier, triggered):
+        if active and is_new_trigger(fid, tier, triggered):
             phase_key = period_info.get("phase", "phase2")
             if phase_key not in ("phase2", "phase3"):
                 phase_key = "phase2"
@@ -375,13 +390,15 @@ def main(dry_run: bool = False) -> None:
             "baseline_nav": baseline_nav,
             "baseline_ratio": baseline_ratio,
             "decision": decision,
+            "active": active,
         })
 
     # ----------------------------------------------------------
-    # 6.5 日次サマリー通知
+    # 6.5 日次サマリー通知（新規購入停止銘柄はLINEに含めない）
     # ----------------------------------------------------------
     if not dry_run and notifications_enabled:
-        notify_daily_summary(today_str, period_info, fund_results, dashboard_url, positions_display)
+        summary_results = [r for r in fund_results if r.get("fund_id") not in inactive_ids]
+        notify_daily_summary(today_str, period_info, summary_results, dashboard_url, positions_display)
     else:
         logger.info("[DRY RUN or 通知OFF] デイリーサマリー通知をスキップ")
 

@@ -14,7 +14,9 @@
       "fund_code": "04311181",
       "tiers": [15, 25, 35],
       "color": "#f97316",
-      "yahoo_code": "04311181"
+      "yahoo_code": "04311181",
+      "active": false,
+      "inactive_note": "2026-09以降新規購入停止。Tier通知・LINE日次サマリーの対象外（既存保有分の評価把握のためダッシュボード表示のみ継続）"
     },
     {
       "id": "sox",
@@ -24,7 +26,8 @@
       "fund_code": "29314233",
       "tiers": [10, 18, 28],
       "color": "#a855f7",
-      "yahoo_code": "29314233"
+      "yahoo_code": "29314233",
+      "avg_cost_note": "2028年月初の出口判定に使用（平均取得単価を上回っていれば売却、下回っていれば最大12ヶ月延長監視）"
     },
     {
       "id": "sp500",
@@ -45,6 +48,16 @@
       "tiers": [6, 10, 15],
       "color": "#10b981",
       "yahoo_code": "0331418A"
+    },
+    {
+      "id": "tracers",
+      "name": "Tracers S&P500トップ10インデックス（米国株式）",
+      "short_name": "Tracers",
+      "company": "アモーヴァ・アセットマネジメント（旧：日興アセット）",
+      "fund_code": "02312245",
+      "tiers": [12, 20, 28],
+      "color": "#ec4899",
+      "yahoo_code": "02312245"
     }
   ],
   "periods": {
@@ -65,30 +78,34 @@
     "_comment": "②期間の原資金額設定（円）。tier_amountsは各Tierへの投入予定額",
     "total": 533049,
     "tier_amounts": {
-      "fang":  {"tier1": 19989, "tier2": 27985, "tier3": 31983},
-      "sox":   {"tier1": 33316, "tier2": 46642, "tier3": 53305},
-      "sp500": {"tier1": 55970, "tier2": 78358, "tier3": 89552},
-      "orkan": {"tier1": 23987, "tier2": 33582, "tier3": 38380}
+      "sox":     {"tier1": 33316, "tier2": 46642, "tier3": 53305},
+      "sp500":   {"tier1": 26652, "tier2": 37314, "tier3": 42644},
+      "orkan":   {"tier1": 23987, "tier2": 33582, "tier3": 38380},
+      "tracers": {"tier1": 49307, "tier2": 69029, "tier3": 78891}
     }
   },
   "funds_phase3": {
     "_comment": "③期間の原資金額設定（円）。上記と同様に設定してください",
     "total": 533050,
     "tier_amounts": {
-      "fang":  {"tier1": 19990, "tier2": 27985, "tier3": 31983},
-      "sox":   {"tier1": 33316, "tier2": 46642, "tier3": 53305},
-      "sp500": {"tier1": 55970, "tier2": 78358, "tier3": 89552},
-      "orkan": {"tier1": 23987, "tier2": 33582, "tier3": 38380}
+      "sox":     {"tier1": 33316, "tier2": 46642, "tier3": 53305},
+      "sp500":   {"tier1": 26652, "tier2": 37314, "tier3": 42644},
+      "orkan":   {"tier1": 23987, "tier2": 33582, "tier3": 38380},
+      "tracers": {"tier1": 49307, "tier2": 69030, "tier3": 78891}
     }
   },
   "baseline": {
     "date": "2026-07-07",
+    "dates": {
+      "tracers": "2026-09-18"
+    },
     "initial_price_tolerance_percent": 5.0,
     "prices": {
       "fang": 94387,
       "sox": 50162,
       "sp500": 44920,
-      "orkan": 38532
+      "orkan": 38532,
+      "tracers": 16416
     }
   },
   "notification": {

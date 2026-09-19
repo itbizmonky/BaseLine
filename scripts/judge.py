@@ -56,15 +56,12 @@ def load_triggered() -> dict:
     旧形式（プレーンな整数のリスト、例: [1, 2]）が残っている場合は自動的に新形式へ
     移行する（invested=True・date=None として扱う。手動移行スクリプトは不要）。
     """
-    default = {"fang": [], "sox": [], "sp500": [], "orkan": []}
+    # 銘柄IDは settings.json の funds に従って増減するため、固定キーでの補完はしない
+    # （未登録銘柄は呼び出し側が .get(fund_id, []) で空扱いする）
     if not TRIGGERED_FILE.exists():
-        return default
+        return {}
     with open(TRIGGERED_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
-    # キー不足時の補完
-    for k in default:
-        if k not in data:
-            data[k] = []
     # 旧形式（整数）から新形式（レコード）への自動移行、recoveredフィールドの補完
     for fund_id, records in data.items():
         data[fund_id] = [
@@ -87,27 +84,41 @@ def load_history() -> list[dict]:
     """
     history.csv を読み込み、辞書のリストで返す。
     各行: {"date": "2026-08-01", "fang": 12345.0, ...}
+    銘柄列はCSVヘッダに従う（銘柄の追加でヘッダが増えても対応。ヘッダにない銘柄は呼び出し側の
+    r.get(fund_id) がNoneを返す）。
     """
     if not HISTORY_FILE.exists():
         return []
     rows = []
     with open(HISTORY_FILE, "r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
+        fund_ids = [c for c in (reader.fieldnames or []) if c != "date"]
         for row in reader:
             parsed = {"date": row["date"]}
-            for fund_id in ("fang", "sox", "sp500", "orkan"):
+            for fund_id in fund_ids:
                 try:
                     parsed[fund_id] = float(row[fund_id]) if row.get(fund_id) else None
-                except (ValueError, KeyError):
+                except ValueError:
                     parsed[fund_id] = None
             rows.append(parsed)
     return rows
+
+
+def _read_history_header() -> list[str]:
+    """history.csv の現在のヘッダ（列名）を返す。ファイルがなければ空リスト。"""
+    if not HISTORY_FILE.exists():
+        return []
+    with open(HISTORY_FILE, "r", encoding="utf-8", newline="") as f:
+        return next(csv.reader(f), [])
 
 
 def append_history(today_str: str, navs: dict) -> None:
     """
     今日のNAVを history.csv に追記する。
     同日付がすでにある場合は上書きしない（べき等）。
+
+    navs に既存ヘッダにない銘柄（新規追加銘柄）が含まれる場合は、ヘッダに列を追加して
+    既存行を空欄で補完した上で追記する（列ずれを起こさないためのヘッダ移行）。
     """
     DATA_DIR.mkdir(exist_ok=True)
     existing = load_history()
@@ -117,15 +128,30 @@ def append_history(today_str: str, navs: dict) -> None:
         logger.info(f"history.csv: {today_str} はすでに存在するためスキップ")
         return
 
-    fieldnames = ["date", "fang", "sox", "sp500", "orkan"]
+    header = _read_history_header()
+    fund_ids = [c for c in header if c != "date"]
+    for fund_id in navs:
+        if fund_id not in fund_ids:
+            fund_ids.append(fund_id)
+    fieldnames = ["date"] + fund_ids
+
+    if header and header != fieldnames:
+        with open(HISTORY_FILE, "r", encoding="utf-8", newline="") as f:
+            raw_rows = list(csv.DictReader(f))
+        with open(HISTORY_FILE, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
+            writer.writeheader()
+            writer.writerows(raw_rows)
+        logger.info(f"history.csv のヘッダを移行しました: {header} → {fieldnames}")
+
     file_exists = HISTORY_FILE.exists()
 
     with open(HISTORY_FILE, "a", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
         if not file_exists:
             writer.writeheader()
         row = {"date": today_str}
-        for fund_id in ("fang", "sox", "sp500", "orkan"):
+        for fund_id in fund_ids:
             nav = navs.get(fund_id)
             row[fund_id] = f"{nav:.0f}" if nav is not None else ""
         writer.writerow(row)
@@ -166,7 +192,8 @@ def update_peak(
         logger.info(f"今日 {today_str} は高値更新対象期間外 (開始: {peak_start_date})")
         return peak, []
 
-    baseline_date = (baseline or {}).get("date")
+    default_baseline_date = (baseline or {}).get("date")
+    baseline_dates = (baseline or {}).get("dates", {})
     baseline_prices = (baseline or {}).get("prices", {})
 
     updated_ids = []
@@ -182,6 +209,8 @@ def update_peak(
 
         current_peak = peak[fund_id].get("value", 0)
 
+        # 銘柄ごとに基準日が異なる場合（後から追加した銘柄）は baseline.dates で個別指定できる
+        baseline_date = baseline_dates.get(fund_id, default_baseline_date)
         baseline_price = baseline_prices.get(fund_id)
         if (
             baseline_date is not None
@@ -269,6 +298,13 @@ def calc_baseline_ratio(current_nav: float, baseline_nav: float) -> float:
     if baseline_nav <= 0:
         return 0.0
     return (current_nav - baseline_nav) / baseline_nav * 100
+
+
+def format_baseline_ratio(ratio: float | None, decimals: int = 1) -> str:
+    """基準日比を表示用文字列に整形する。基準日価格が未設定でratioがNoneの場合は「-」。"""
+    if ratio is None:
+        return "-"
+    return f"{ratio:+.{decimals}f}%"
 
 
 def judge_decision(tier: int, current_nav: float, baseline_nav: float, tolerance_pct: float, is_high_water_mark: bool) -> str:
@@ -537,6 +573,8 @@ DECISION_INFO = {
     "WAIT": {"emoji": "🟡", "tag": "WAIT", "label": "上昇待機",   "css": "wait"},
     "HOLD": {"emoji": "⚪", "tag": "HOLD", "label": "様子見",     "css": "hold"},
     "HIGH": {"emoji": "🔵", "tag": "HIGH", "label": "高値更新中", "css": "high"},
+    # 新規購入停止（settings.json の funds[].active=false）。Tier到達しても通知・購入推奨の対象外
+    "INACTIVE": {"emoji": "⏹", "tag": "停止", "label": "新規購入停止", "css": "hold"},
 }
 
 

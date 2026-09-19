@@ -20,7 +20,7 @@ from pathlib import Path
 
 import requests
 
-from judge import decision_display, format_drawdown
+from judge import decision_display, format_baseline_ratio, format_drawdown
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ def build_tier_message(
     period_info: dict,
     fund_remaining: dict,
     decision: str,
-    baseline_ratio: float,
+    baseline_ratio: float | None,
     dashboard_url: str,
 ) -> str:
     """
@@ -110,7 +110,7 @@ def build_tier_message(
         f"\n"
         f"📌 銘柄: {fund_name}\n"
         f"📉 最高値比: {format_drawdown(drawdown, 2)}\n"
-        f"📈 基準日比: {baseline_ratio:+.2f}%\n"
+        f"📈 基準日比: {format_baseline_ratio(baseline_ratio, 2)}\n"
         f"   現在値: {current_nav:,.0f}円\n"
         f"   設定来高値: {peak_nav:,.0f}円\n"
         f"\n"
@@ -163,7 +163,7 @@ def build_daily_summary_message(
         lines.append(
             f"{dec_emoji} {r['short_name']}:\n"
             f"   最高値比: {format_drawdown(r['drawdown'])}\n"
-            f"   基準日比: {r['baseline_ratio']:+.1f}% ({tier_str})"
+            f"   基準日比: {format_baseline_ratio(r.get('baseline_ratio'))} ({tier_str})"
         )
 
     if positions_display:
@@ -208,7 +208,7 @@ def notify_tier_reached(
     period_info: dict,
     fund_remaining: dict,
     decision: str,
-    baseline_ratio: float,
+    baseline_ratio: float | None,
     dashboard_url: str,
 ) -> bool:
     """Tier到達通知を送信する（要件 F-09）"""

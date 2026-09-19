@@ -1,13 +1,77 @@
 {
-  "fang": [],
+  "fang": [
+    {
+      "date": "2026-07-07",
+      "price": 94387,
+      "category": "①分",
+      "amount": 106610
+    },
+    {
+      "date": "2026-08-25",
+      "price": 97668,
+      "category": "定期積立",
+      "amount": 8824
+    }
+  ],
   "sox": [
+    {
+      "date": "2026-07-07",
+      "price": 50163,
+      "category": "①分",
+      "amount": 177683
+    },
     {
       "date": "2026-08-03",
       "price": 42266,
       "category": "Tier1",
       "amount": 33316
+    },
+    {
+      "date": "2026-08-25",
+      "price": 43629,
+      "category": "定期積立",
+      "amount": 14706
     }
   ],
-  "sp500": [],
-  "orkan": []
+  "sp500": [
+    {
+      "date": "2026-07-07",
+      "price": 44920,
+      "category": "①分",
+      "amount": 298508
+    },
+    {
+      "date": "2026-08-25",
+      "price": 44836,
+      "category": "定期積立",
+      "amount": 24706
+    }
+  ],
+  "orkan": [
+    {
+      "date": "2026-07-07",
+      "price": 38532,
+      "category": "①分",
+      "amount": 127932
+    },
+    {
+      "date": "2026-07-10",
+      "price": 38334,
+      "category": "つみたて枠",
+      "amount": 10000
+    },
+    {
+      "date": "2026-08-25",
+      "price": 38471,
+      "category": "定期積立",
+      "amount": 10588
+    },
+    {
+      "date": "2026-09-10",
+      "price": 37174,
+      "category": "つみたて枠",
+      "amount": 10000
+    }
+  ],
+  "tracers": []
 }

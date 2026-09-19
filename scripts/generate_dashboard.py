@@ -16,11 +16,14 @@ import logging
 from datetime import date, datetime
 from pathlib import Path
 
-from judge import decision_display, format_drawdown
+from judge import decision_display, format_baseline_ratio, format_drawdown
+from purchase_history import calc_average_cost
 
 logger = logging.getLogger(__name__)
 
 PUBLIC_DIR = Path(__file__).parent.parent / "public"
+
+INACTIVE_TAG = '<span class="inactive-tag">（新規購入停止・監視終了）</span>'
 
 
 def generate(
@@ -47,6 +50,7 @@ def generate(
     funds_html, funds_note_html = _build_funds_summary(triggered, period_info, settings)
     market_html = _build_market_sentiment(market_display or {})
     positions_html = _build_positions_section(positions_display or {})
+    average_cost_html = _build_average_cost_section(settings, purchase_history or {}, navs, history)
     usdjpy_rate = (market_display or {}).get("usdjpy", {}).get("value")
     positions_chart_data = _build_positions_chart_data(positions_history or [], settings, usdjpy_rate)
 
@@ -60,6 +64,7 @@ def generate(
         funds_note_html=funds_note_html,
         market_html=market_html,
         positions_html=positions_html,
+        average_cost_html=average_cost_html,
         chart_data_json=json.dumps(chart_data, ensure_ascii=False),
         positions_chart_data_json=json.dumps(positions_chart_data, ensure_ascii=False),
         settings=settings,
@@ -152,6 +157,9 @@ def _build_chart_data(history: list[dict], settings: dict, peak: dict, purchase_
         records = (purchase_history or {}).get(fid, [])
         markers = []
         for r in records:
+            if not r.get("price"):
+                # 約定単価が未記録（null）の実績はマーカーを描画できないためスキップ
+                continue
             idx = _nearest_label_index(r["date"], labels, label_index)
             if idx is None:
                 # 表示期間（直近180日）外、または近傍に記録がない場合はスキップ
@@ -237,7 +245,8 @@ def _build_positions_chart_data(positions_history: list[dict], settings: dict, u
 def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
     rows = []
     fund_colors = {f["id"]: f["color"] for f in settings["funds"]}
-    
+    inactive_ids = {f["id"] for f in settings["funds"] if not f.get("active", True)}
+
     for r in fund_results:
         color = fund_colors.get(r["fund_id"], "#ffffff")
         decision = r.get("decision", "HOLD")
@@ -255,10 +264,11 @@ def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
             f'    <div style="display:flex;align-items:center;gap:8px;">'
             f'      <span class="fund-dot" style="background-color:{color};box-shadow:0 0 6px {color}"></span>'
             f'      <span style="font-weight:600;">{r["short_name"]}</span>'
+            f'{INACTIVE_TAG if r["fund_id"] in inactive_ids else ""}'
             f'    </div>'
             f'  </td>'
             f'  <td><span class="val-drawdown">{format_drawdown(r["drawdown"])}</span></td>'
-            f'  <td>{r["baseline_ratio"]:+.1f}%</td>'
+            f'  <td>{format_baseline_ratio(r.get("baseline_ratio"))}</td>'
             f'  <td><span class="val-tier">{tier_str}</span></td>'
             f'  <td><span class="status-badge {dec_class}">{dec_emoji} {dec_label}</span></td>'
             f'</tr>'
@@ -292,7 +302,7 @@ def _build_fund_cards(
         tier = result.get("tier", 0)
         drawdown = result.get("drawdown", 0.0)
         baseline_nav = result.get("baseline_nav", 0)
-        baseline_ratio = result.get("baseline_ratio", 0.0)
+        baseline_ratio = result.get("baseline_ratio")
         decision = result.get("decision", "HOLD")
         
         tiers = fund["tiers"]
@@ -310,7 +320,8 @@ def _build_fund_cards(
         baseline_str = f"{baseline_nav:,.0f}円" if baseline_nav > 0 else "未設定"
         
         drawdown_str = format_drawdown(drawdown) if nav is not None else "-"
-        baseline_ratio_str = f"{baseline_ratio:+.1f}%" if nav is not None else "-"
+        baseline_ratio_str = format_baseline_ratio(baseline_ratio) if nav is not None else "-"
+        inactive_tag = INACTIVE_TAG if not fund.get("active", True) else ""
 
         tier_bars = _tier_bars(tier, tiers, color)
 
@@ -318,7 +329,7 @@ def _build_fund_cards(
 <div class="fund-card" style="--fund-color: {color}">
   <div class="fund-card__header">
     <div class="fund-card__name-block">
-      <span class="fund-tag" style="border: 1px solid {color}50; color:{color};">{fund['short_name']}</span>
+      <span class="fund-tag" style="border: 1px solid {color}50; color:{color};">{fund['short_name']}</span>{inactive_tag}
       <div class="fund-card__name">{fund['name']}</div>
     </div>
     <div class="status-badge {dec_class}">{dec_emoji} {dec_label}</div>
@@ -495,6 +506,66 @@ def _build_positions_section(positions_display: dict) -> str:
     return "\n".join(cards)
 
 
+def _build_average_cost_section(settings: dict, purchase_history: dict, navs: dict, history: list[dict]) -> str:
+    """
+    銘柄ごとの平均取得単価と現在の基準価額を並べ、含み益/含み損を表示するカードのHTMLを生成する。
+    約定実績（data/purchase_history.json）のみから算出する表示専用の情報で、
+    Tier判定・BUY/WAIT判定・LINE通知には一切使用しない。
+    """
+    cards = []
+    for fund in settings["funds"]:
+        fid = fund["id"]
+        records = purchase_history.get(fid, [])
+        if not fund.get("active", True) and not records:
+            continue
+
+        avg = calc_average_cost(records)
+        excluded = len(records) - (avg["count"] if avg else 0)
+        inactive_tag = INACTIVE_TAG if not fund.get("active", True) else ""
+        color = fund.get("color", "#94a3b8")
+
+        current = navs.get(fid)
+        if current is None:
+            current = next((r.get(fid) for r in reversed(history) if r.get(fid) is not None), None)
+
+        notes = []
+        if avg is None:
+            value_html = '<div class="market-card__value" style="font-size:16px;">データなし</div>'
+            badge_html = ""
+            if records:
+                notes.append(f"約定単価が未記録の実績{excluded}件のみのため算出できません。")
+            else:
+                notes.append("約定実績が未登録です（data/purchase_history.json に追記）。")
+        else:
+            value_html = f'<div class="market-card__value">{avg["avg_cost"]:,.0f}<span class="market-card__unit">円</span></div>'
+            if current is None:
+                badge_html = ""
+            else:
+                ratio = (current - avg["avg_cost"]) / avg["avg_cost"] * 100
+                if current >= avg["avg_cost"]:
+                    badge_html = f'<span class="status-badge pos-good">🟢 含み益 {ratio:+.1f}%</span>'
+                else:
+                    badge_html = f'<span class="status-badge pos-warning">🔴 含み損 {ratio:+.1f}%</span>'
+            current_str = f"{current:,.0f}円" if current is not None else "取得失敗"
+            notes.append(f"現在の基準価額: {current_str}")
+            notes.append(f"投入金額合計: {avg['total_amount']:,.0f}円 ／ 購入{avg['count']}回")
+            if excluded:
+                notes.append(f'<span style="color:var(--yellow);">⚠ 約定単価が未記録の実績{excluded}件を除いた暫定値です</span>')
+        if fund.get("avg_cost_note"):
+            notes.append(fund["avg_cost_note"])
+
+        notes_html = "".join(f'<div class="market-card__note">{n}</div>' for n in notes)
+        cards.append(
+            f'<div class="market-card" style="border-left: 3px solid {color}">'
+            f'  <div class="market-card__label">{fund["short_name"]}{inactive_tag}</div>'
+            f'  {value_html}'
+            f'  {badge_html}'
+            f'  {notes_html}'
+            f'</div>'
+        )
+    return "\n".join(cards)
+
+
 def _build_funds_summary(triggered: dict, period_info: dict, settings: dict) -> tuple[str, str]:
     phase_key = period_info.get("phase", "phase2")
     is_fallback = phase_key not in ("phase2", "phase3")
@@ -513,6 +584,9 @@ def _build_funds_summary(triggered: dict, period_info: dict, settings: dict) -> 
     rows = []
     skip_notes = []
     for fund in settings["funds"]:
+        if not fund.get("active", True):
+            # 新規購入停止銘柄は原資0円のため資金投入管理の対象外
+            continue
         fid = fund["id"]
         rem = calc_remaining_funds(fid, triggered, phase_key, settings)
         rows.append(
@@ -549,6 +623,7 @@ def _render_html(
     funds_note_html: str,
     market_html: str,
     positions_html: str,
+    average_cost_html: str,
     chart_data_json: str,
     positions_chart_data_json: str,
     settings: dict,
@@ -559,6 +634,10 @@ def _render_html(
     peak_start_date = settings.get("peak_start_date", "2026-08-01")
     phase_type = period_info.get("phase", "none")
 
+    fund_tabs = "".join(
+        f'<button class="chart-tab" data-fund="{f["id"]}">{f["short_name"]}{"（停止）" if not f.get("active", True) else ""}</button>'
+        for f in settings["funds"]
+    )
     positions_tabs = "".join(
         f'<button class="chart-tab" data-position="{item["id"]}">{item.get("short_name", item["id"])}</button>'
         for item in settings.get("positions", {}).get("items", [])
@@ -716,6 +795,7 @@ body{{
   font-family: 'Outfit', sans-serif;
 }}
 .fund-card__name{{ font-size: 15px; font-weight: 700; margin-top: 4px; }}
+.inactive-tag{{ font-size: 10px; font-weight: 400; color: var(--text-mute); margin-left: 6px; }}
 .fund-card__metrics{{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }}
 .metric-item{{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--inner-radius); padding: 12px; }}
 .metric-item--highlight{{ border: 1px solid rgba(239, 68, 68, 0.2); }}
@@ -840,7 +920,7 @@ body{{
           <ul style="padding-left: 0;">
             <li style="margin-bottom:8px;"><strong>最高値からの下落率:</strong> {peak_start_date}以降に記録した最高値から、現在の価格が何％下がっているかを表します（例: <code>-15.0%</code>）。この下落が設定した各Tierに達するとシグナルが発動します。</li>
             <li style="margin-bottom:8px;"><strong>判定基準価格:</strong> 暴落初期や安値時の価格を基準とし、そこから<code>+5.0%</code>以上価格が急上昇した場合は、高値掴みを避けるため一時的に <code>WAIT</code> と判定されます。</li>
-            <li style="margin-bottom:8px;"><strong>価格決定のタイミング（重要）:</strong> 対象4銘柄はいずれも海外資産に投資するため「ブラインド方式」が適用され、発注日の翌営業日の海外市場終値をもとに基準価額が決定されます。発注は当日の締切後キャンセルできないため、Tier到達＝即発注が必ずしも最適とは限りません。</li>
+            <li style="margin-bottom:8px;"><strong>価格決定のタイミング（重要）:</strong> 対象銘柄はいずれも海外資産に投資するため「ブラインド方式」が適用され、発注日の翌営業日の海外市場終値をもとに基準価額が決定されます。発注は当日の締切後キャンセルできないため、Tier到達＝即発注が必ずしも最適とは限りません。</li>
             <li style="margin-bottom:8px;"><strong>保有ポジション（監視専用）について:</strong> ページ下部の「保有ポジション」は、上記のTier判定とは別枠です。階層的な追加投資の対象ではなく、取得単価との差（含み損益）を表示するだけの監視専用の項目です。</li>
             <li style="margin-bottom:8px;"><strong>注意:</strong> 実際の買付注文は、SBI証券等の画面から手動で発注する必要があります。</li>
           </ul>
@@ -870,6 +950,15 @@ body{{
     </div>
   </section>
 
+  <!-- ===== 平均取得単価と含み損益 ===== -->
+  <section class="section-panel">
+    <div class="section-title">💰 平均取得単価と含み損益</div>
+    <p class="market-disclaimer">これまでの約定実績（購入実績）から算出した銘柄別の平均取得単価と、現在の基準価額の比較です。参考情報であり、BUY/WAITの判定・LINE通知には使用しません。</p>
+    <div class="market-grid">
+      {average_cost_html}
+    </div>
+  </section>
+
   <!-- ===== 銘柄詳細カード ===== -->
   {cards_html}
 
@@ -878,10 +967,7 @@ body{{
     <div class="section-title">基準価額の推移とTier閾値</div>
     <div class="chart-tabs" id="chartTabs">
       <button class="chart-tab active" data-fund="all">全銘柄</button>
-      <button class="chart-tab" data-fund="fang">FANG+</button>
-      <button class="chart-tab" data-fund="sox">SOX半導体</button>
-      <button class="chart-tab" data-fund="sp500">S&P500</button>
-      <button class="chart-tab" data-fund="orkan">オルカン</button>
+      {fund_tabs}
     </div>
     <div class="chart-wrapper">
       <canvas id="mainChart"></canvas>
@@ -908,7 +994,7 @@ body{{
         </div>
         <div class="guide-item">
           <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">💱 USD/JPY（ドル円）</h4>
-          <p>1ドルが何円かを表すレートです。4銘柄はいずれも為替ヘッジなしのため、基準価額の変動には「米国株そのものの値動き」と「円ドルレートの変動」の両方が混ざっています。円高が進んでいるときのTier到達は、見た目の下落の一部が為替要因である可能性を示唆します。</p>
+          <p>1ドルが何円かを表すレートです。各銘柄はいずれも為替ヘッジなしのため、基準価額の変動には「米国株そのものの値動き」と「円ドルレートの変動」の両方が混ざっています。円高が進んでいるときのTier到達は、見た目の下落の一部が為替要因である可能性を示唆します。</p>
         </div>
       </div>
     </div>

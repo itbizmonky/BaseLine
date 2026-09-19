@@ -84,6 +84,39 @@ def calc_average_cost(records: list[dict]) -> dict | None:
     }
 
 
+def resolve_cost_basis(fallback: float, records: list[dict]) -> float:
+    """
+    保有ポジションの取得単価を決定する。約定実績（purchase_history.json）に計算可能な実績が
+    あればその平均取得単価（複数回購入した場合の加重平均）を、なければ settings.json の
+    cost_basis（fallback）を返す。
+    """
+    avg = calc_average_cost(records)
+    return round(avg["avg_cost"]) if avg else fallback
+
+
+def position_purchases(item: dict, records: list[dict]) -> list[dict]:
+    """
+    保有ポジションの購入実績（カード・チャートのマーカー表示用）を返す。
+    約定実績（purchase_history.json）に日付つきの実績があればそれを、なければ settings.json の
+    positions.items の purchase_date / purchase_amount（任意項目）を1件の実績として返す。
+    各要素: {"date", "price", "amount", "category"}（priceは取得単価。不明ならNone）
+    """
+    dated = [r for r in records if r.get("date")]
+    if dated:
+        return [
+            {"date": r["date"], "price": r.get("price"), "amount": r.get("amount"), "category": r.get("category", "")}
+            for r in dated
+        ]
+    if item.get("purchase_date"):
+        return [{
+            "date": item["purchase_date"],
+            "price": item.get("cost_basis"),
+            "amount": item.get("purchase_amount"),
+            "category": "",
+        }]
+    return []
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     history = load_purchase_history()

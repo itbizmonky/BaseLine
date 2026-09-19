@@ -17,7 +17,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from judge import decision_display, format_baseline_ratio, format_drawdown
-from purchase_history import calc_average_cost
+from purchase_history import calc_average_cost, position_purchases, resolve_cost_basis
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ def generate(
     positions_html = _build_positions_section(positions_display or {})
     average_cost_html = _build_average_cost_section(settings, purchase_history or {}, navs, history)
     usdjpy_rate = (market_display or {}).get("usdjpy", {}).get("value")
-    positions_chart_data = _build_positions_chart_data(positions_history or [], settings, usdjpy_rate)
+    positions_chart_data = _build_positions_chart_data(positions_history or [], settings, usdjpy_rate, purchase_history or {})
 
     html = _render_html(
         today_str=today_str,
@@ -181,7 +181,7 @@ def _build_chart_data(history: list[dict], settings: dict, peak: dict, purchase_
     }
 
 
-def _build_positions_chart_data(positions_history: list[dict], settings: dict, usdjpy_rate: float | None) -> dict:
+def _build_positions_chart_data(positions_history: list[dict], settings: dict, usdjpy_rate: float | None, purchase_history: dict | None = None) -> dict:
     """
     保有ポジション（Tier投資対象外）の推移チャートデータを構築する。
     USD建て銘柄（テスラ等）は、現在のUSD/JPYレートで一律換算した近似値をプロットする
@@ -214,20 +214,23 @@ def _build_positions_chart_data(positions_history: list[dict], settings: dict, u
             "tension": 0.3,
             "fill": False,
         })
-        cost_basis = item.get("cost_basis", 0)
+        records = (purchase_history or {}).get(pid, [])
+        cost_basis = resolve_cost_basis(item.get("cost_basis", 0), records)
         cost_lines[pid] = round(cost_basis * rate, 2)
 
-        purchase_date = item.get("purchase_date")
-        idx = _nearest_label_index(purchase_date, labels, label_index)
-        purchase_markers[pid] = (
-            {
+        markers = []
+        for p in position_purchases(item, records):
+            idx = _nearest_label_index(p["date"], labels, label_index)
+            if idx is None or not p.get("price"):
+                continue
+            markers.append({
                 "index": idx,
-                "date": purchase_date,
-                "price": cost_lines[pid],
-                "amount": item.get("purchase_amount"),
-            }
-            if idx is not None else None
-        )
+                "date": p["date"],
+                "price": round(p["price"] * rate, 2),
+                "amount": p.get("amount"),
+                "category": p.get("category", ""),
+            })
+        purchase_markers[pid] = markers
 
     return {
         "labels": labels,
@@ -485,11 +488,13 @@ def _build_positions_section(positions_display: dict) -> str:
             cost_str = f"{p['cost_basis']:,.0f}円"
 
         purchase_note = ""
-        purchase_date = p.get("purchase_date")
-        if purchase_date:
-            purchase_amount = p.get("purchase_amount")
-            amount_str = f"{purchase_amount:,.0f}円" if purchase_amount else "-"
-            purchase_note = f'<div class="market-card__note">取得日: {purchase_date} ／ 投入金額: {amount_str}</div>'
+        purchases = p.get("purchases") or []
+        if purchases:
+            dates_str = "、".join(x["date"] for x in purchases)
+            total = sum(x["amount"] for x in purchases if x.get("amount"))
+            total_str = f"{total:,.0f}円" if total else "-"
+            times_str = f"（{len(purchases)}回）" if len(purchases) > 1 else ""
+            purchase_note = f'<div class="market-card__note">取得日: {dates_str} ／ 投入金額: {total_str}{times_str}</div>'
 
         cards.append(
             f'<div class="market-card" style="border-left: 3px solid {p.get("color", "#94a3b8")}">'
@@ -1258,11 +1263,12 @@ function buildPositionsDatasets(positionFilter) {{
 
   if (positionFilter === 'all') return priceDatasets;
 
-  const marker = POSITIONS_RAW_DATA.purchase_markers && POSITIONS_RAW_DATA.purchase_markers[positionFilter];
-  if (!marker) return priceDatasets;
+  const markers = (POSITIONS_RAW_DATA.purchase_markers && POSITIONS_RAW_DATA.purchase_markers[positionFilter]) || [];
+  if (markers.length === 0) return priceDatasets;
 
   const arr = new Array(POSITIONS_RAW_DATA.labels.length).fill(null);
-  arr[marker.index] = marker.price;
+  const meta = new Array(POSITIONS_RAW_DATA.labels.length).fill(null);
+  markers.forEach(m => {{ arr[m.index] = m.price; meta[m.index] = m; }});
   const extra = {{
     label: '約定実績',
     data: arr,
@@ -1274,7 +1280,7 @@ function buildPositionsDatasets(positionFilter) {{
     pointBorderColor: '#fff',
     pointBorderWidth: 1,
     isPurchaseMarker: true,
-    markerMeta: marker,
+    markerMeta: meta,
   }};
   return [...priceDatasets, extra];
 }}
@@ -1316,9 +1322,11 @@ function renderPositionsChart(positionFilter = 'all') {{
           callbacks: {{
             label: (item) => {{
               if (item.dataset.isPurchaseMarker) {{
-                const m = item.dataset.markerMeta;
+                const m = item.dataset.markerMeta[item.dataIndex];
+                if (!m) return null;
                 return [
                   `★ 取得日: ${{m.date}}`,
+                  `　取得単価: ${{m.price.toLocaleString()}}円`,
                   `　投入金額: ${{(m.amount || 0).toLocaleString()}}円`,
                 ];
               }}

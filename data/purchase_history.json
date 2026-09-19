@@ -73,5 +73,19 @@
       "amount": 10000
     }
   ],
-  "tracers": []
+  "tracers": [],
+  "newnisa_orkan": [
+    {
+      "date": "2026-08-06",
+      "price": 19818,
+      "category": "①分",
+      "amount": 75000
+    },
+    {
+      "date": "2026-09-14",
+      "price": 19220,
+      "category": "追加購入",
+      "amount": 75000
+    }
+  ]
 }

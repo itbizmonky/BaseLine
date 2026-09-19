@@ -40,7 +40,7 @@ from positions import (
     load_positions_history, append_positions_history,
     calc_gain_loss_ratio, judge_gain_loss_level,
 )
-from purchase_history import load_purchase_history
+from purchase_history import load_purchase_history, position_purchases, resolve_cost_basis
 from judge import (
     load_peak, save_peak,
     load_triggered, save_triggered,
@@ -209,10 +209,12 @@ def main(dry_run: bool = False) -> None:
 
             old_positions = load_positions()
             fetched_positions = fetch_all_positions(settings)
+            purchase_records = load_purchase_history()
 
             for item in items:
                 pid = item["id"]
-                cost_basis = item.get("cost_basis", 0)
+                # 約定実績があれば複数回購入の平均取得単価を優先（なければ settings の cost_basis）
+                cost_basis = resolve_cost_basis(item.get("cost_basis", 0), purchase_records.get(pid, []))
                 currency = item.get("currency", "JPY")
 
                 cur_value = fetched_positions.get(pid)
@@ -239,8 +241,7 @@ def main(dry_run: bool = False) -> None:
                     "ratio": ratio,
                     "level": judge_gain_loss_level(ratio, gain_loss_thresholds),
                     "color": item.get("color", "#94a3b8"),
-                    "purchase_date": item.get("purchase_date"),
-                    "purchase_amount": item.get("purchase_amount"),
+                    "purchases": position_purchases(item, purchase_records.get(pid, [])),
                 }
 
             new_positions = update_positions(old_positions, fetched_positions, today_str)

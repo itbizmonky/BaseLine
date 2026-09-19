@@ -27,23 +27,29 @@
 `scripts/monitor.py` がエントリポイント。以下の順で実行される。
 
 1. `config/settings.json` 読み込み + `sync_github_workflow()` で settings.json の `schedule` を `.github/workflows/monitor.yml` の cron 式に自動反映（JST→UTC変換）
-2. `fetch_nav.py`: 日経新聞の投信ページ（`https://www.nikkei.com/nkd/fund/?fcode=<fund_code>`）を BeautifulSoup でスクレイピングし基準価額を取得。失敗時は `retry_count` 回まで `retry_interval_sec` 秒間隔でリトライ
-3. 取得失敗銘柄があれば `notify_fetch_error()` でLINE通知（F-11）
+2. `fetch_nav.py`: `settings.json`の`funds`全銘柄について日経新聞の投信ページ（`https://www.nikkei.com/nkd/fund/?fcode=<fund_code>`）を BeautifulSoup でスクレイピングし基準価額を取得。失敗時は `retry_count` 回まで `retry_interval_sec` 秒間隔でリトライ
+2.5. `market_data.py`（市場心理指標）・`positions.py`（保有ポジション）を取得。Tier判定・通知に影響しない独立ステップで、失敗しても処理を継続（前回値を維持）
+3. 取得失敗銘柄があれば `notify_fetch_error()` でLINE通知（F-11。`active:false`の銘柄は対象外）
 4. `judge.py`: `data/peak.json`（設定来高値）を更新、下落率・Tier・基準日比・購入判定（BUY/WAIT/HOLD/HIGH）を計算
-5. 新規Tier到達（`data/triggered.json` に未記録のTier）があれば `notify_tier_reached()` でLINE通知（重複通知防止のため一度発動したTierは再通知しない）
-6. 全銘柄の日次サマリーを `notify_daily_summary()` でLINE通知
-7. `data/history.csv` / `data/peak.json` / `data/triggered.json` を保存
-8. `generate_dashboard.py`: `public/index.html` を生成（Chart.jsはCDN読み込み）
-9. GitHub Actions が `data/` と `public/index.html`、更新された `monitor.yml` をコミット・プッシュし、GitHub Pages にデプロイ
+5. 新規Tier到達（`data/triggered.json` に未記録のTier）があれば `notify_tier_reached()` でLINE通知（重複通知防止のため一度発動したTierは再通知しない）。`active:false`（新規購入停止）の銘柄は通知・記録・回復判定を行わない（判定は`INACTIVE`）
+6. 通知対象銘柄（`active:false`を除く）と保有ポジションの日次サマリーを `notify_daily_summary()` でLINE通知
+7. `data/history.csv`（新銘柄の列は自動追加）/ `data/peak.json` / `data/triggered.json` を保存（`market.json`・`positions.json`・`positions_history.csv`はそれぞれの取得ステップで保存）
+8. `generate_dashboard.py`: `public/index.html` を生成（Chart.jsはCDN読み込み）。購入実績（`purchase_history.json`）から平均取得単価・グラフマーカーも描画
+9. GitHub Actions が `history.csv`/`peak.json`/`triggered.json`/`market.json`/`positions.json`/`positions_history.csv` と `public/index.html`、更新された `monitor.yml` をコミット・プッシュし、GitHub Pages にデプロイ（`purchase_history.json`は運用者が手動コミットするため対象外）
 
 ## ファイル構成
 
 ```
 config/settings.json    # 銘柄・Tier閾値・原資金額・監視期間・スケジュール（唯一の設定源）
 data/history.csv         # 日次基準価額の蓄積（追記のみ、同日は上書きしない＝べき等）
-data/peak.json            # 銘柄ごとの設定来高値（2026-08-01以降の最高値）
+data/peak.json            # 銘柄ごとの設定来高値（peak_start_date以降の最高値。銘柄別の基準日はbaseline.datesで指定）
 data/triggered.json      # 発動済みTier記録（重複通知防止のstate）
+data/purchase_history.json  # 購入実績（約定日・単価・区分・金額。運用者が手動追記。平均取得単価・グラフマーカーの元データ）
+data/market.json / positions.json / positions_history.csv  # 市場心理・保有ポジションの最新値と履歴（自動更新）
 scripts/fetch_nav.py     # 日経新聞スクレイピング
+scripts/market_data.py   # 市場心理指標（VIX/米10年金利/USD-JPY）
+scripts/positions.py     # 保有ポジション（Tier対象外）の取得・含み損益判定
+scripts/purchase_history.py  # 購入実績の読み込み・平均取得単価の算出（表示専用。判定・通知には使わない）
 scripts/judge.py         # 下落率/Tier/期間/購入判定/トレンド計算ロジック
 scripts/notify.py        # LINE Messaging API 通知（メッセージ生成 + 送信）
 scripts/generate_dashboard.py  # public/index.html 生成
@@ -85,7 +91,10 @@ GitHub Actions 上では `workflow_dispatch` から `dry_run: true` で手動テ
 - **cronの自動同期**: `monitor.yml` の cron 式を直接編集しても、次回 `monitor.py` 実行時に `settings.json` の `schedule` の値で上書きされる。スケジュール変更は `settings.json` 側で行うこと。
 - **triggered.json は重複通知防止のための唯一のstate**。誤って削除するとTier到達通知が再送されるため、消す場合は影響を理解した上で行う。
 - **public/index.html は生成物**。手動編集しても次回実行で上書きされる。テンプレート変更は `generate_dashboard.py` を編集する。
-- **スコープ外**: 自動発注、高度な予測AI、複数ユーザー対応・ログイン機能は要件定義で明示的に対象外。
+- **銘柄の追加・停止は設定のみで行う**: `settings.json`の`funds`に追加、新規購入停止は`"active": false`。`history.csv`は列が自動で増える。銘柄IDをコードに固定しない（`.get(fund_id, [])`で未登録を空扱いする）。
+- **`--dry-run`は通知送信コードパスを通らない**（8/10-11の本番クラッシュの教訓、要件定義書 残課題No.7）。通知関連の変更は`_send_line_message`をモックして`notify_*`を実際に呼んで確認すること。また`--dry-run`もデータファイル（`data/*`）を書き換えるため、テスト後は`git checkout`で戻す（本番の記録はGitHub Actionsに一本化）。
+- **公開リポジトリ**: SBI証券の約定履歴CSV等の個人の取引明細はコミットしない。
+- **スコープ外**: 自動発注、高度な予測AI、複数ユーザー対応・ログイン機能、SOXの出口判定（売却判定）の自動化は要件定義で明示的に対象外。
 
 ## コーディング規約（既存コードに準拠）
 

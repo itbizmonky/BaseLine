@@ -143,6 +143,7 @@ body{
   font-family: 'Outfit', sans-serif;
 }
 .fund-card__name{ font-size: 15px; font-weight: 700; margin-top: 4px; }
+.inactive-tag{ font-size: 10px; font-weight: 400; color: var(--text-mute); margin-left: 6px; }
 .fund-card__metrics{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
 .metric-item{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--inner-radius); padding: 12px; }
 .metric-item--highlight{ border: 1px solid rgba(239, 68, 68, 0.2); }
@@ -237,8 +238,8 @@ body{
   <div class="header-inner">
     <div class="header-title">🛡️ VALOR SHIELD <span style="font-weight:400; font-size:14px; color:var(--text-mute); margin-left:4px;">暴落監視</span></div>
     <div class="header-sub">
-      更新: 2026-09-18 JST &nbsp;｜&nbsp; 基準日: 2026-07-07<br>
-      <span style="color:var(--blue); font-weight:600;">📅 現在期間: ②期間 (期限まで残163日)</span>
+      更新: 2026-09-21 JST &nbsp;｜&nbsp; 基準日: 2026-07-07<br>
+      <span style="color:var(--blue); font-weight:600;">📅 現在期間: ②期間 (期限まで残160日)</span>
     </div>
   </div>
 </header>
@@ -267,7 +268,7 @@ body{
           <ul style="padding-left: 0;">
             <li style="margin-bottom:8px;"><strong>最高値からの下落率:</strong> 2026-07-07以降に記録した最高値から、現在の価格が何％下がっているかを表します（例: <code>-15.0%</code>）。この下落が設定した各Tierに達するとシグナルが発動します。</li>
             <li style="margin-bottom:8px;"><strong>判定基準価格:</strong> 暴落初期や安値時の価格を基準とし、そこから<code>+5.0%</code>以上価格が急上昇した場合は、高値掴みを避けるため一時的に <code>WAIT</code> と判定されます。</li>
-            <li style="margin-bottom:8px;"><strong>価格決定のタイミング（重要）:</strong> 対象4銘柄はいずれも海外資産に投資するため「ブラインド方式」が適用され、発注日の翌営業日の海外市場終値をもとに基準価額が決定されます。発注は当日の締切後キャンセルできないため、Tier到達＝即発注が必ずしも最適とは限りません。</li>
+            <li style="margin-bottom:8px;"><strong>価格決定のタイミング（重要）:</strong> 対象銘柄はいずれも海外資産に投資するため「ブラインド方式」が適用され、発注日の翌営業日の海外市場終値をもとに基準価額が決定されます。発注は当日の締切後キャンセルできないため、Tier到達＝即発注が必ずしも最適とは限りません。</li>
             <li style="margin-bottom:8px;"><strong>保有ポジション（監視専用）について:</strong> ページ下部の「保有ポジション」は、上記のTier判定とは別枠です。階層的な追加投資の対象ではなく、取得単価との差（含み損益）を表示するだけの監視専用の項目です。</li>
             <li style="margin-bottom:8px;"><strong>注意:</strong> 実際の買付注文は、SBI証券等の画面から手動で発注する必要があります。</li>
           </ul>
@@ -291,12 +292,26 @@ body{
           </tr>
         </thead>
         <tbody>
-          <tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#f97316;box-shadow:0 0 6px #f97316"></span>      <span style="font-weight:600;">FANG+</span>    </div>  </td>  <td><span class="val-drawdown">-4.2%</span></td>  <td>+2.8%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
-<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#a855f7;box-shadow:0 0 6px #a855f7"></span>      <span style="font-weight:600;">SOX半導体</span>    </div>  </td>  <td><span class="val-drawdown">-16.4%</span></td>  <td>-15.9%</td>  <td><span class="val-tier">Tier 1</span></td>  <td><span class="status-badge badge-buy">🟢 BUY 購入推奨</span></td></tr>
-<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#3b82f6;box-shadow:0 0 6px #3b82f6"></span>      <span style="font-weight:600;">S&P500</span>    </div>  </td>  <td><span class="val-drawdown">-5.0%</span></td>  <td>-3.3%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
-<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#10b981;box-shadow:0 0 6px #10b981"></span>      <span style="font-weight:600;">オルカン</span>    </div>  </td>  <td><span class="val-drawdown">-4.8%</span></td>  <td>-3.6%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
+          <tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#f97316;box-shadow:0 0 6px #f97316"></span>      <span style="font-weight:600;">FANG+</span><span class="inactive-tag">（新規購入停止・監視終了）</span>    </div>  </td>  <td><span class="val-drawdown">-2.6%</span></td>  <td>+4.6%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⏹ 停止 新規購入停止</span></td></tr>
+<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#a855f7;box-shadow:0 0 6px #a855f7"></span>      <span style="font-weight:600;">SOX半導体</span>    </div>  </td>  <td><span class="val-drawdown">-13.7%</span></td>  <td>-13.3%</td>  <td><span class="val-tier">Tier 1</span></td>  <td><span class="status-badge badge-buy">🟢 BUY 購入推奨</span></td></tr>
+<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#3b82f6;box-shadow:0 0 6px #3b82f6"></span>      <span style="font-weight:600;">S&P500</span>    </div>  </td>  <td><span class="val-drawdown">-3.9%</span></td>  <td>-2.1%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
+<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#10b981;box-shadow:0 0 6px #10b981"></span>      <span style="font-weight:600;">オルカン</span>    </div>  </td>  <td><span class="val-drawdown">-3.8%</span></td>  <td>-2.6%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-hold">⚪ HOLD 様子見</span></td></tr>
+<tr>  <td>    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#ec4899;box-shadow:0 0 6px #ec4899"></span>      <span style="font-weight:600;">Tracers</span>    </div>  </td>  <td><span class="val-drawdown">0.0%</span></td>  <td>+0.0%</td>  <td><span class="val-tier">未到達</span></td>  <td><span class="status-badge badge-high">🔵 HIGH 高値更新中</span></td></tr>
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- ===== 平均取得単価と含み損益 ===== -->
+  <section class="section-panel">
+    <div class="section-title">💰 平均取得単価と含み損益</div>
+    <p class="market-disclaimer">これまでの約定実績（購入実績）から算出した銘柄別の平均取得単価と、現在の基準価額の比較です。参考情報であり、BUY/WAITの判定・LINE通知には使用しません。</p>
+    <div class="market-grid">
+      <div class="market-card" style="border-left: 3px solid #f97316">  <div class="market-card__label">FANG+<span class="inactive-tag">（新規購入停止・監視終了）</span></div>  <div class="market-card__value">94,630<span class="market-card__unit">円</span></div>  <span class="status-badge pos-good">🟢 含み益 +4.3%</span>  <div class="market-card__note">現在の基準価額: 98,718円</div><div class="market-card__note">投入金額合計: 115,434円 ／ 購入2回</div></div>
+<div class="market-card" style="border-left: 3px solid #a855f7">  <div class="market-card__label">SOX半導体</div>  <div class="market-card__value">48,357<span class="market-card__unit">円</span></div>  <span class="status-badge pos-warning">🔴 含み損 -10.0%</span>  <div class="market-card__note">現在の基準価額: 43,513円</div><div class="market-card__note">投入金額合計: 225,705円 ／ 購入3回</div><div class="market-card__note">2028年月初の出口判定に使用（平均取得単価を上回っていれば売却、下回っていれば最大12ヶ月延長監視）</div></div>
+<div class="market-card" style="border-left: 3px solid #3b82f6">  <div class="market-card__label">S&P500</div>  <div class="market-card__value">44,914<span class="market-card__unit">円</span></div>  <span class="status-badge pos-warning">🔴 含み損 -2.1%</span>  <div class="market-card__note">現在の基準価額: 43,966円</div><div class="market-card__note">投入金額合計: 323,214円 ／ 購入2回</div></div>
+<div class="market-card" style="border-left: 3px solid #10b981">  <div class="market-card__label">オルカン</div>  <div class="market-card__value">38,427<span class="market-card__unit">円</span></div>  <span class="status-badge pos-warning">🔴 含み損 -2.3%</span>  <div class="market-card__note">現在の基準価額: 37,532円</div><div class="market-card__note">投入金額合計: 158,520円 ／ 購入4回</div></div>
+<div class="market-card" style="border-left: 3px solid #ec4899">  <div class="market-card__label">Tracers</div>  <div class="market-card__value" style="font-size:16px;">データなし</div>    <div class="market-card__note">約定実績が未登録です（data/purchase_history.json に追記）。</div></div>
     </div>
   </section>
 
@@ -305,16 +320,16 @@ body{
 <div class="fund-card" style="--fund-color: #f97316">
   <div class="fund-card__header">
     <div class="fund-card__name-block">
-      <span class="fund-tag" style="border: 1px solid #f9731650; color:#f97316;">FANG+</span>
+      <span class="fund-tag" style="border: 1px solid #f9731650; color:#f97316;">FANG+</span><span class="inactive-tag">（新規購入停止・監視終了）</span>
       <div class="fund-card__name">iFreeNEXT FANG+インデックス</div>
     </div>
-    <div class="status-badge dec-hold">⚪ HOLD 様子見</div>
+    <div class="status-badge dec-hold">⏹ 停止 新規購入停止</div>
   </div>
 
   <div class="fund-card__metrics">
     <div class="metric-item">
       <div class="metric-label">現在価格</div>
-      <div class="metric-value">97,042円</div>
+      <div class="metric-value">98,718円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">設定来最高価格</div>
@@ -323,13 +338,13 @@ body{
     </div>
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値からの下落率</div>
-      <div class="metric-value drawdown">-4.2%</div>
-      <div class="metric-sub">Tier1 (-15%) まであと 10.8pt</div>
+      <div class="metric-value drawdown">-2.6%</div>
+      <div class="metric-sub">Tier1 (-15%) まであと 12.4pt</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">判定基準日価格</div>
       <div class="metric-value">94,387円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">+2.8%</span></div>
+      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">+4.6%</span></div>
     </div>
   </div>
 
@@ -354,7 +369,7 @@ body{
   <div class="fund-card__metrics">
     <div class="metric-item">
       <div class="metric-label">現在価格</div>
-      <div class="metric-value">42,171円</div>
+      <div class="metric-value">43,513円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">設定来最高価格</div>
@@ -363,13 +378,13 @@ body{
     </div>
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値からの下落率</div>
-      <div class="metric-value drawdown">-16.4%</div>
-      <div class="metric-sub">Tier2 (-18%) まであと 1.6pt</div>
+      <div class="metric-value drawdown">-13.7%</div>
+      <div class="metric-sub">Tier2 (-18%) まであと 4.3pt</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">判定基準日価格</div>
       <div class="metric-value">50,162円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-15.9%</span></div>
+      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-13.3%</span></div>
     </div>
   </div>
 
@@ -394,7 +409,7 @@ body{
   <div class="fund-card__metrics">
     <div class="metric-item">
       <div class="metric-label">現在価格</div>
-      <div class="metric-value">43,454円</div>
+      <div class="metric-value">43,966円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">設定来最高価格</div>
@@ -403,13 +418,13 @@ body{
     </div>
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値からの下落率</div>
-      <div class="metric-value drawdown">-5.0%</div>
-      <div class="metric-sub">Tier1 (-7%) まであと 2.0pt</div>
+      <div class="metric-value drawdown">-3.9%</div>
+      <div class="metric-sub">Tier1 (-7%) まであと 3.1pt</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">判定基準日価格</div>
       <div class="metric-value">44,920円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-3.3%</span></div>
+      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-2.1%</span></div>
     </div>
   </div>
 
@@ -434,7 +449,7 @@ body{
   <div class="fund-card__metrics">
     <div class="metric-item">
       <div class="metric-label">現在価格</div>
-      <div class="metric-value">37,161円</div>
+      <div class="metric-value">37,532円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">設定来最高価格</div>
@@ -443,13 +458,13 @@ body{
     </div>
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値からの下落率</div>
-      <div class="metric-value drawdown">-4.8%</div>
-      <div class="metric-sub">Tier1 (-6%) まであと 1.2pt</div>
+      <div class="metric-value drawdown">-3.8%</div>
+      <div class="metric-sub">Tier1 (-6%) まであと 2.2pt</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">判定基準日価格</div>
       <div class="metric-value">38,532円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-3.6%</span></div>
+      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-2.6%</span></div>
     </div>
   </div>
 
@@ -462,15 +477,52 @@ body{
 </div>
 
 
+<div class="fund-card" style="--fund-color: #ec4899">
+  <div class="fund-card__header">
+    <div class="fund-card__name-block">
+      <span class="fund-tag" style="border: 1px solid #ec489950; color:#ec4899;">Tracers</span>
+      <div class="fund-card__name">Tracers S&P500トップ10インデックス（米国株式）</div>
+    </div>
+    <div class="status-badge dec-high">🔵 HIGH 高値更新中</div>
+  </div>
+
+  <div class="fund-card__metrics">
+    <div class="metric-item">
+      <div class="metric-label">現在価格</div>
+      <div class="metric-value">16,416円</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">設定来最高価格</div>
+      <div class="metric-value">16,416円</div>
+      <div class="metric-sub">2026-09-21 記録</div>
+    </div>
+    <div class="metric-item metric-item--highlight">
+      <div class="metric-label">最高値からの下落率</div>
+      <div class="metric-value drawdown">0.0%</div>
+      <div class="metric-sub">Tier1 (-12%) まであと 12.0pt</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">判定基準日価格</div>
+      <div class="metric-value">16,416円</div>
+      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">+0.0%</span></div>
+    </div>
+  </div>
+
+  <div class="tier-indicator-title">購入目安 (Tier) 到達状況</div>
+  <div class="tier-progress">
+    <div class="tier-bar " style="">  <span class="tier-bar__label">Tier1</span>  <span class="tier-bar__val">-12%</span></div>
+<div class="tier-bar " style="">  <span class="tier-bar__label">Tier2</span>  <span class="tier-bar__val">-20%</span></div>
+<div class="tier-bar " style="">  <span class="tier-bar__label">Tier3</span>  <span class="tier-bar__val">-28%</span></div>
+  </div>
+</div>
+
+
   <!-- ===== 推移チャート ===== -->
   <section class="section-panel">
     <div class="section-title">基準価額の推移とTier閾値</div>
     <div class="chart-tabs" id="chartTabs">
       <button class="chart-tab active" data-fund="all">全銘柄</button>
-      <button class="chart-tab" data-fund="fang">FANG+</button>
-      <button class="chart-tab" data-fund="sox">SOX半導体</button>
-      <button class="chart-tab" data-fund="sp500">S&P500</button>
-      <button class="chart-tab" data-fund="orkan">オルカン</button>
+      <button class="chart-tab" data-fund="fang">FANG+（停止）</button><button class="chart-tab" data-fund="sox">SOX半導体</button><button class="chart-tab" data-fund="sp500">S&P500</button><button class="chart-tab" data-fund="orkan">オルカン</button><button class="chart-tab" data-fund="tracers">Tracers</button>
     </div>
     <div class="chart-wrapper">
       <canvas id="mainChart"></canvas>
@@ -497,14 +549,14 @@ body{
         </div>
         <div class="guide-item">
           <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">💱 USD/JPY（ドル円）</h4>
-          <p>1ドルが何円かを表すレートです。4銘柄はいずれも為替ヘッジなしのため、基準価額の変動には「米国株そのものの値動き」と「円ドルレートの変動」の両方が混ざっています。円高が進んでいるときのTier到達は、見た目の下落の一部が為替要因である可能性を示唆します。</p>
+          <p>1ドルが何円かを表すレートです。各銘柄はいずれも為替ヘッジなしのため、基準価額の変動には「米国株そのものの値動き」と「円ドルレートの変動」の両方が混ざっています。円高が進んでいるときのTier到達は、見た目の下落の一部が為替要因である可能性を示唆します。</p>
         </div>
       </div>
     </div>
     <div class="market-grid">
-      <div class="market-card">  <div class="market-card__label">VIX指数（恐怖指数）</div>  <div class="market-card__value">15.44</div>  <span class="status-badge vix-normal">通常</span>  <div class="market-card__note">市場は落ち着いた平常運転の状態です。</div>  <div class="market-card__date">2026-09-18 時点</div></div>
-<div class="market-card">  <div class="market-card__label">米10年国債利回り</div>  <div class="market-card__value">4.94<span class="market-card__unit">%</span></div>  <div class="market-card__direction"><span class="trend-icon">↗</span> 前回比 +0.274pt</div>  <div class="market-card__note">成長株（FANG+・SOXなど）は金利上昇局面で下がりやすい傾向があります。</div>  <div class="market-card__date">2026-09-18 時点</div></div>
-<div class="market-card">  <div class="market-card__label">USD/JPY（ドル円）</div>  <div class="market-card__value">156.06<span class="market-card__unit">円</span></div>  <div class="market-card__direction"><span class="trend-icon">↘</span> 前回比 -2.32円</div>  <div class="market-card__note">円高が進むと、米国株の実力が変わらなくても基準価額は下がって見えます。</div>  <div class="market-card__date">2026-09-18 時点</div></div>
+      <div class="market-card">  <div class="market-card__label">VIX指数（恐怖指数）</div>  <div class="market-card__value">14.81</div>  <span class="status-badge vix-hot">過熱</span>  <div class="market-card__note">市場は楽観的で、警戒感がほとんどない状態です。</div>  <div class="market-card__date">2026-09-21 時点</div></div>
+<div class="market-card">  <div class="market-card__label">米10年国債利回り</div>  <div class="market-card__value">5.00<span class="market-card__unit">%</span></div>  <div class="market-card__direction"><span class="trend-icon">↗</span> 前回比 +0.334pt</div>  <div class="market-card__note">成長株（FANG+・SOXなど）は金利上昇局面で下がりやすい傾向があります。</div>  <div class="market-card__date">2026-09-21 時点</div></div>
+<div class="market-card">  <div class="market-card__label">USD/JPY（ドル円）</div>  <div class="market-card__value">157.01<span class="market-card__unit">円</span></div>  <div class="market-card__direction"><span class="trend-icon">↘</span> 前回比 -1.37円</div>  <div class="market-card__note">円高が進むと、米国株の実力が変わらなくても基準価額は下がって見えます。</div>  <div class="market-card__date">2026-09-21 時点</div></div>
     </div>
   </section>
 
@@ -514,15 +566,16 @@ body{
     <div class="trend-grid">
       <div class="trend-item">  <span class="trend-name">FANG+</span>  <span class="trend-val">5日: <span class="trend-icon">↗</span></span>  <span class="trend-val">20日: <span class="trend-icon">↘</span></span></div>
 <div class="trend-item">  <span class="trend-name">SOX半導体</span>  <span class="trend-val">5日: <span class="trend-icon">↘</span></span>  <span class="trend-val">20日: <span class="trend-icon">↘</span></span></div>
-<div class="trend-item">  <span class="trend-name">S&P500</span>  <span class="trend-val">5日: <span class="trend-icon">→</span></span>  <span class="trend-val">20日: <span class="trend-icon">↘</span></span></div>
+<div class="trend-item">  <span class="trend-name">S&P500</span>  <span class="trend-val">5日: <span class="trend-icon">↗</span></span>  <span class="trend-val">20日: <span class="trend-icon">↘</span></span></div>
 <div class="trend-item">  <span class="trend-name">オルカン</span>  <span class="trend-val">5日: <span class="trend-icon">→</span></span>  <span class="trend-val">20日: <span class="trend-icon">↘</span></span></div>
+<div class="trend-item">  <span class="trend-name">Tracers</span>  <span class="trend-val">5日: <span class="trend-icon">→</span></span>  <span class="trend-val">20日: <span class="trend-icon">→</span></span></div>
     </div>
   </section>
 
   <!-- ===== 残資金サマリー ===== -->
   <section class="section-panel">
     <div class="section-title">資金投入管理状況 &nbsp;<span style="font-size:12px; font-weight:normal; color:var(--text-mute);">(②期間)</span></div>
-    
+    <p style="font-size:11px; color:var(--text-mute); margin-bottom:4px;">※SOX半導体 Tier2 (2026-09-16) は投資を見送ったため、投入済み金額に含まれていません。</p>
     <div class="table-wrapper">
       <table class="funds-table">
         <thead>
@@ -534,10 +587,10 @@ body{
           </tr>
         </thead>
         <tbody>
-          <tr>  <td><span style="color:#f97316; font-weight:600;">FANG+</span></td>  <td>0円</td>  <td>79,957円</td>  <td>79,957円</td></tr>
-<tr>  <td><span style="color:#a855f7; font-weight:600;">SOX半導体</span></td>  <td>79,958円</td>  <td>53,305円</td>  <td>133,263円</td></tr>
-<tr>  <td><span style="color:#3b82f6; font-weight:600;">S&P500</span></td>  <td>0円</td>  <td>223,880円</td>  <td>223,880円</td></tr>
+          <tr>  <td><span style="color:#a855f7; font-weight:600;">SOX半導体</span></td>  <td>33,316円</td>  <td>99,947円</td>  <td>133,263円</td></tr>
+<tr>  <td><span style="color:#3b82f6; font-weight:600;">S&P500</span></td>  <td>0円</td>  <td>106,610円</td>  <td>106,610円</td></tr>
 <tr>  <td><span style="color:#10b981; font-weight:600;">オルカン</span></td>  <td>0円</td>  <td>95,949円</td>  <td>95,949円</td></tr>
+<tr>  <td><span style="color:#ec4899; font-weight:600;">Tracers</span></td>  <td>0円</td>  <td>197,227円</td>  <td>197,227円</td></tr>
         </tbody>
       </table>
     </div>
@@ -548,8 +601,8 @@ body{
     <div class="section-title">📦 保有ポジション（監視専用）</div>
     <p class="market-disclaimer">この銘柄は暴落時の階層的追加投資（Tier）の対象ではありません。取得単価との差（含み損益）を監視・通知するだけの保有ポジションです。</p>
     <div class="market-grid">
-      <div class="market-card" style="border-left: 3px solid #eab308">  <div class="market-card__label">はじめてのNISA全世界株式</div>  <div class="market-card__value">19,266円</div>    <span class="status-badge pos-neutral">⚪ 様子見</span>  <div class="market-card__note">取得単価: 19,818円 ／ 含み損益: -2.8%</div>  <div class="market-card__note">取得日: 2026-08-06 ／ 投入金額: 75,000円</div>  <div class="market-card__date">2026-09-18 時点</div></div>
-<div class="market-card" style="border-left: 3px solid #e11d48">  <div class="market-card__label">テスラ</div>  <div class="market-card__value">366.20 USD</div>  <div class="market-card__note">約57,147円換算</div>  <span class="status-badge pos-great">🟢 絶好調</span>  <div class="market-card__note">取得単価: 317.00 USD ／ 含み損益: +15.5%</div>    <div class="market-card__date">2026-09-18 時点</div></div>
+      <div class="market-card" style="border-left: 3px solid #eab308">  <div class="market-card__label">はじめてのNISA全世界株式</div>  <div class="market-card__value">19,460円</div>    <span class="status-badge pos-neutral">⚪ 様子見</span>  <div class="market-card__note">取得単価: 19,514円 ／ 含み損益: -0.3%</div>  <div class="market-card__note">取得日: 2026-08-06、2026-09-14 ／ 投入金額: 150,000円（2回）</div>  <div class="market-card__date">2026-09-21 時点</div></div>
+<div class="market-card" style="border-left: 3px solid #e11d48">  <div class="market-card__label">テスラ</div>  <div class="market-card__value">364.27 USD</div>  <div class="market-card__note">約57,196円換算</div>  <span class="status-badge pos-great">🟢 絶好調</span>  <div class="market-card__note">取得単価: 317.00 USD ／ 含み損益: +14.9%</div>    <div class="market-card__date">2026-09-21 時点</div></div>
     </div>
     <div class="chart-tabs" id="positionsChartTabs" style="margin-top:20px;">
       <button class="chart-tab active" data-position="all">全ポジション</button>
@@ -567,7 +620,7 @@ body{
 </footer>
 
 <script>
-const RAW_DATA = {"labels": ["2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10", "2026-07-11", "2026-07-12", "2026-07-13", "2026-07-14", "2026-07-15", "2026-07-16", "2026-07-17", "2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31", "2026-08-03", "2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14", "2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"], "datasets": [{"id": "fang", "label": "FANG+", "data": [94387.0, null, null, 94813.0, 95596.0, 95596.0, 95596.0, 95905.0, 95179.0, 96252.0, 97340.0, 95884.0, 95884.0, 94556.0, 95920.0, 94864.0, 93562.0, 92689.0, 93227.0, 92422.0, 90759.0, 91805.0, 90492.0, 94037.0, 98254.0, 97877.0, 99524.0, 99524.0, 99640.0, 99084.0, 101036.0, 99867.0, 99265.0, 97888.0, 97884.0, 97970.0, 98161.0, 97668.0, 98212.0, 98519.0, 100206.0, 101309.0, 100727.0, 100057.0, 99198.0, 99147.0, 98318.0, 96924.0, 96011.0, 96107.0, 95930.0, 96194.0, 97131.0, 96722.0, 97042.0], "borderColor": "#f97316", "backgroundColor": "#f9731620", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "sox", "label": "SOX半導体", "data": [50162.0, null, null, 49021.0, 50396.0, 50396.0, 50396.0, 50420.0, 48073.0, 49245.0, 48235.0, 46250.0, 46250.0, 45777.0, 48358.0, 48544.0, 48545.0, 46388.0, 45389.0, 43318.0, 40968.0, 43564.0, 42266.0, 43158.0, 46027.0, 45449.0, 46820.0, 46820.0, 46249.0, 47403.0, 47626.0, 47383.0, 48282.0, 45856.0, 44617.0, 45041.0, 44719.0, 43629.0, 44232.0, 44333.0, 45431.0, 44023.0, 44214.0, 43406.0, 43170.0, 42401.0, 43906.0, 43284.0, 43846.0, 44002.0, 43096.0, 43590.0, 41314.0, 41672.0, 42171.0], "borderColor": "#a855f7", "backgroundColor": "#a855f720", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "sp500", "label": "S&P500", "data": [44920.0, null, null, 44704.0, 44958.0, 44958.0, 44958.0, 45148.0, 44848.0, 44970.0, 45158.0, 45008.0, 45008.0, 44479.0, 45055.0, 44970.0, 44669.0, 44607.0, 44650.0, 44708.0, 43982.0, 43950.0, 42902.0, 43994.0, 44821.0, 44813.0, 45066.0, 45066.0, 45301.0, 45424.0, 45727.0, 45565.0, 45443.0, 45111.0, 44940.0, 44740.0, 44843.0, 44836.0, 44953.0, 44958.0, 45344.0, 45408.0, 45197.0, 45017.0, 44779.0, 44392.0, 44308.0, 43680.0, 43426.0, 43215.0, 43223.0, 43314.0, 43398.0, 43410.0, 43454.0], "borderColor": "#3b82f6", "backgroundColor": "#3b82f620", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "orkan", "label": "オルカン", "data": [38532.0, null, null, 38161.0, 38334.0, 38334.0, 38334.0, 38432.0, 38197.0, 38335.0, 38526.0, 38338.0, 38338.0, 37913.0, 38413.0, 38412.0, 38243.0, 38160.0, 38183.0, 38091.0, 37626.0, 37521.0, 36824.0, 37510.0, 38095.0, 38227.0, 38395.0, 38395.0, 38676.0, 38798.0, 39019.0, 38927.0, 38868.0, 38525.0, 38358.0, 38381.0, 38527.0, 38471.0, 38605.0, 38629.0, 38842.0, 38905.0, 38753.0, 38584.0, 38285.0, 37945.0, 38002.0, 37531.0, 37358.0, 37174.0, 37123.0, 37072.0, 37081.0, 37058.0, 37161.0], "borderColor": "#10b981", "backgroundColor": "#10b98120", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}], "tier_lines": {"fang": {"peak": 101309.0, "tier_values": [86113.0, 75982.0, 65851.0], "tiers": [15, 25, 35], "color": "#f97316"}, "sox": {"peak": 50420.0, "tier_values": [45378.0, 41344.0, 36302.0], "tiers": [10, 18, 28], "color": "#a855f7"}, "sp500": {"peak": 45727.0, "tier_values": [42526.0, 40240.0, 37496.0], "tiers": [7, 12, 18], "color": "#3b82f6"}, "orkan": {"peak": 39019.0, "tier_values": [36678.0, 35117.0, 33166.0], "tiers": [6, 10, 15], "color": "#10b981"}}, "purchase_markers": {"fang": [], "sox": [{"index": 21, "date": "2026-08-03", "price": 42266, "category": "Tier1", "amount": 33316}], "sp500": [], "orkan": []}};
+const RAW_DATA = {"labels": ["2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10", "2026-07-11", "2026-07-12", "2026-07-13", "2026-07-14", "2026-07-15", "2026-07-16", "2026-07-17", "2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31", "2026-08-03", "2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14", "2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21"], "datasets": [{"id": "fang", "label": "FANG+", "data": [94387.0, null, null, 94813.0, 95596.0, 95596.0, 95596.0, 95905.0, 95179.0, 96252.0, 97340.0, 95884.0, 95884.0, 94556.0, 95920.0, 94864.0, 93562.0, 92689.0, 93227.0, 92422.0, 90759.0, 91805.0, 90492.0, 94037.0, 98254.0, 97877.0, 99524.0, 99524.0, 99640.0, 99084.0, 101036.0, 99867.0, 99265.0, 97888.0, 97884.0, 97970.0, 98161.0, 97668.0, 98212.0, 98519.0, 100206.0, 101309.0, 100727.0, 100057.0, 99198.0, 99147.0, 98318.0, 96924.0, 96011.0, 96107.0, 95930.0, 96194.0, 97131.0, 96722.0, 97042.0, 98718.0], "borderColor": "#f97316", "backgroundColor": "#f9731620", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "sox", "label": "SOX半導体", "data": [50162.0, null, null, 49021.0, 50396.0, 50396.0, 50396.0, 50420.0, 48073.0, 49245.0, 48235.0, 46250.0, 46250.0, 45777.0, 48358.0, 48544.0, 48545.0, 46388.0, 45389.0, 43318.0, 40968.0, 43564.0, 42266.0, 43158.0, 46027.0, 45449.0, 46820.0, 46820.0, 46249.0, 47403.0, 47626.0, 47383.0, 48282.0, 45856.0, 44617.0, 45041.0, 44719.0, 43629.0, 44232.0, 44333.0, 45431.0, 44023.0, 44214.0, 43406.0, 43170.0, 42401.0, 43906.0, 43284.0, 43846.0, 44002.0, 43096.0, 43590.0, 41314.0, 41672.0, 42171.0, 43513.0], "borderColor": "#a855f7", "backgroundColor": "#a855f720", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "sp500", "label": "S&P500", "data": [44920.0, null, null, 44704.0, 44958.0, 44958.0, 44958.0, 45148.0, 44848.0, 44970.0, 45158.0, 45008.0, 45008.0, 44479.0, 45055.0, 44970.0, 44669.0, 44607.0, 44650.0, 44708.0, 43982.0, 43950.0, 42902.0, 43994.0, 44821.0, 44813.0, 45066.0, 45066.0, 45301.0, 45424.0, 45727.0, 45565.0, 45443.0, 45111.0, 44940.0, 44740.0, 44843.0, 44836.0, 44953.0, 44958.0, 45344.0, 45408.0, 45197.0, 45017.0, 44779.0, 44392.0, 44308.0, 43680.0, 43426.0, 43215.0, 43223.0, 43314.0, 43398.0, 43410.0, 43454.0, 43966.0], "borderColor": "#3b82f6", "backgroundColor": "#3b82f620", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "orkan", "label": "オルカン", "data": [38532.0, null, null, 38161.0, 38334.0, 38334.0, 38334.0, 38432.0, 38197.0, 38335.0, 38526.0, 38338.0, 38338.0, 37913.0, 38413.0, 38412.0, 38243.0, 38160.0, 38183.0, 38091.0, 37626.0, 37521.0, 36824.0, 37510.0, 38095.0, 38227.0, 38395.0, 38395.0, 38676.0, 38798.0, 39019.0, 38927.0, 38868.0, 38525.0, 38358.0, 38381.0, 38527.0, 38471.0, 38605.0, 38629.0, 38842.0, 38905.0, 38753.0, 38584.0, 38285.0, 37945.0, 38002.0, 37531.0, 37358.0, 37174.0, 37123.0, 37072.0, 37081.0, 37058.0, 37161.0, 37532.0], "borderColor": "#10b981", "backgroundColor": "#10b98120", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "tracers", "label": "Tracers", "data": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 16416.0], "borderColor": "#ec4899", "backgroundColor": "#ec489920", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}], "tier_lines": {"fang": {"peak": 101309.0, "tier_values": [86113.0, 75982.0, 65851.0], "tiers": [15, 25, 35], "color": "#f97316"}, "sox": {"peak": 50420.0, "tier_values": [45378.0, 41344.0, 36302.0], "tiers": [10, 18, 28], "color": "#a855f7"}, "sp500": {"peak": 45727.0, "tier_values": [42526.0, 40240.0, 37496.0], "tiers": [7, 12, 18], "color": "#3b82f6"}, "orkan": {"peak": 39019.0, "tier_values": [36678.0, 35117.0, 33166.0], "tiers": [6, 10, 15], "color": "#10b981"}, "tracers": {"peak": 16416.0, "tier_values": [14446.0, 13133.0, 11820.0], "tiers": [12, 20, 28], "color": "#ec4899"}}, "purchase_markers": {"fang": [{"index": 0, "date": "2026-07-07", "price": 94387, "category": "①分", "amount": 106610}, {"index": 36, "date": "2026-08-25", "price": 97668, "category": "定期積立", "amount": 8824}], "sox": [{"index": 0, "date": "2026-07-07", "price": 50163, "category": "①分", "amount": 177683}, {"index": 21, "date": "2026-08-03", "price": 42266, "category": "Tier1", "amount": 33316}, {"index": 36, "date": "2026-08-25", "price": 43629, "category": "定期積立", "amount": 14706}], "sp500": [{"index": 0, "date": "2026-07-07", "price": 44920, "category": "①分", "amount": 298508}, {"index": 36, "date": "2026-08-25", "price": 44836, "category": "定期積立", "amount": 24706}], "orkan": [{"index": 0, "date": "2026-07-07", "price": 38532, "category": "①分", "amount": 127932}, {"index": 3, "date": "2026-07-10", "price": 38334, "category": "つみたて枠", "amount": 10000}, {"index": 36, "date": "2026-08-25", "price": 38471, "category": "定期積立", "amount": 10588}, {"index": 48, "date": "2026-09-10", "price": 37174, "category": "つみたて枠", "amount": 10000}], "tracers": []}};
 
 let chartInstance = null;
 
@@ -760,7 +813,7 @@ document.getElementById('chartTabs').addEventListener('click', (e) => {
 renderChart('all');
 
 // ===== 保有ポジション（監視専用）チャート =====
-const POSITIONS_RAW_DATA = {"labels": ["2026-08-07", "2026-09-18"], "datasets": [{"id": "newnisa_orkan", "label": "はじめてのNISA全世界株式", "data": [19818.0, 19266.0], "borderColor": "#eab308", "backgroundColor": "#eab30820", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "tesla", "label": "テスラ", "data": [49864.25415, 57147.341], "borderColor": "#e11d48", "backgroundColor": "#e11d4820", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}], "cost_lines": {"newnisa_orkan": 19818.0, "tesla": 49469.44}, "purchase_markers": {"newnisa_orkan": {"index": 0, "date": "2026-08-06", "price": 19818.0, "amount": 75000}, "tesla": null}, "is_jpy_converted": true};
+const POSITIONS_RAW_DATA = {"labels": ["2026-08-07", "2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14", "2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21"], "datasets": [{"id": "newnisa_orkan", "label": "はじめてのNISA全世界株式", "data": [19818.0, 19857.0, 19906.0, 19906.0, 20051.0, 20115.0, 20229.0, 20182.0, 20151.0, 19972.0, 19887.0, 19898.0, 19973.0, 19944.0, 20014.0, 20027.0, 20138.0, 20170.0, 20091.0, 20004.0, 19850.0, 19673.0, 19702.0, 19458.0, 19368.0, 19272.0, 19245.0, 19220.0, 19225.0, 19213.0, 19266.0, 19460.0], "borderColor": "#eab308", "backgroundColor": "#eab30820", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}, {"id": "tesla", "label": "テスラ", "data": [50171.002949999995, 51591.988699999994, 51953.123199999995, 52256.16215, 51423.98264999999, 53378.81939999999, 53741.52404999999, 53275.1895, 52893.64305, 55131.106799999994, 54190.58695, 56974.4629, 54790.384249999996, 54994.503749999996, 54298.927299999996, 55710.49215, 54758.98125, 57773.66924999999, 55911.47134999999, 56055.925149999995, 59095.73555, 55595.871199999994, 55595.871199999994, 57806.6424, 57751.68715, 57084.3734, 57379.56159999999, 56363.674549999996, 55988.40869999999, 56223.93119999999, 57498.893, 57195.854049999994], "borderColor": "#e11d48", "backgroundColor": "#e11d4820", "borderWidth": 2, "pointRadius": 0, "tension": 0.3, "fill": false}], "cost_lines": {"newnisa_orkan": 19514.0, "tesla": 49773.75}, "purchase_markers": {"newnisa_orkan": [{"index": 0, "date": "2026-08-06", "price": 19818.0, "amount": 75000, "category": "①分"}, {"index": 26, "date": "2026-09-14", "price": 19220.0, "amount": 75000, "category": "追加購入"}], "tesla": []}, "is_jpy_converted": true};
 let positionsChartInstance = null;
 
 function buildPositionsDatasets(positionFilter) {
@@ -770,11 +823,12 @@ function buildPositionsDatasets(positionFilter) {
 
   if (positionFilter === 'all') return priceDatasets;
 
-  const marker = POSITIONS_RAW_DATA.purchase_markers && POSITIONS_RAW_DATA.purchase_markers[positionFilter];
-  if (!marker) return priceDatasets;
+  const markers = (POSITIONS_RAW_DATA.purchase_markers && POSITIONS_RAW_DATA.purchase_markers[positionFilter]) || [];
+  if (markers.length === 0) return priceDatasets;
 
   const arr = new Array(POSITIONS_RAW_DATA.labels.length).fill(null);
-  arr[marker.index] = marker.price;
+  const meta = new Array(POSITIONS_RAW_DATA.labels.length).fill(null);
+  markers.forEach(m => { arr[m.index] = m.price; meta[m.index] = m; });
   const extra = {
     label: '約定実績',
     data: arr,
@@ -786,7 +840,7 @@ function buildPositionsDatasets(positionFilter) {
     pointBorderColor: '#fff',
     pointBorderWidth: 1,
     isPurchaseMarker: true,
-    markerMeta: marker,
+    markerMeta: meta,
   };
   return [...priceDatasets, extra];
 }
@@ -828,9 +882,11 @@ function renderPositionsChart(positionFilter = 'all') {
           callbacks: {
             label: (item) => {
               if (item.dataset.isPurchaseMarker) {
-                const m = item.dataset.markerMeta;
+                const m = item.dataset.markerMeta[item.dataIndex];
+                if (!m) return null;
                 return [
                   `★ 取得日: ${m.date}`,
+                  `　取得単価: ${m.price.toLocaleString()}円`,
                   `　投入金額: ${(m.amount || 0).toLocaleString()}円`,
                 ];
               }

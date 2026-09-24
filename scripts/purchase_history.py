@@ -45,6 +45,35 @@ def load_purchase_history() -> dict:
         return json.load(f)
 
 
+ACCOUNT_ATTACK = "attack"  # 攻撃フェーズ（成長投資枠での買付）
+ACCOUNT_SIDE = "side"      # 別枠積立（つみたて投資枠での毎月積立）
+
+
+def record_account(r: dict) -> str:
+    """実績の口座区分を返す。account 省略時は攻撃フェーズ（後方互換）。"""
+    return r.get("account") or ACCOUNT_ATTACK
+
+
+def filter_by_account(records: list[dict], account: str) -> list[dict]:
+    """指定した口座区分（attack / side）の実績だけを返す。"""
+    return [r for r in records if record_account(r) == account]
+
+
+def record_units(r: dict) -> float | None:
+    """
+    実績1件の購入口数を返す。units が記録されていればそれを、なければ
+    投入金額 ÷ 約定単価 × 10,000 で算出する。どちらも求められなければ None。
+    """
+    units = r.get("units")
+    if units and units > 0:
+        return float(units)
+    price = r.get("price")
+    amount = r.get("amount")
+    if price and amount and price > 0 and amount > 0:
+        return amount / price * 10000
+    return None
+
+
 def calc_average_cost(records: list[dict]) -> dict | None:
     """
     約定実績のリストから平均取得単価を算出する（基準価額は1万口あたり）。
@@ -52,8 +81,10 @@ def calc_average_cost(records: list[dict]) -> dict | None:
         購入口数（各回） = 投入金額 ÷ 約定単価 × 10,000
         平均取得単価     = Σ投入金額 ÷ Σ購入口数 × 10,000
 
-    約定単価（price）か投入金額（amount）が未記録・不正な実績は計算から除外し、その件数を
-    excluded として返す（単価補完前に不正確な値が気付かれず使われるのを防ぐため）。
+    実績に units（保有口数）が記録されていればそれを優先する（既存残高のように、単価ではなく
+    口数と取得総額が分かっている場合）。なければ 投入金額 ÷ 約定単価 × 10,000 で算出する。
+    口数を求められない（約定単価も units も未記録）か、投入金額が不正な実績は計算から除外し、
+    その件数を excluded として返す（単価補完前に不正確な値が気付かれず使われるのを防ぐため）。
 
     Returns:
         None: 計算に使える実績が1件もない
@@ -65,13 +96,13 @@ def calc_average_cost(records: list[dict]) -> dict | None:
     count = 0
     excluded = 0
     for r in records:
-        price = r.get("price")
         amount = r.get("amount")
-        if not price or not amount or price <= 0 or amount <= 0:
+        units = record_units(r)
+        if not amount or amount <= 0 or units is None:
             excluded += 1
             continue
         total_amount += amount
-        total_units += amount / price * 10000
+        total_units += units
         count += 1
     if count == 0:
         return None

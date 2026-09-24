@@ -49,6 +49,13 @@
   ],
   "orkan": [
     {
+      "date": "2026-06-30",
+      "category": "既存残高",
+      "amount": 50000,
+      "units": 14196,
+      "account": "side"
+    },
+    {
       "date": "2026-07-07",
       "price": 38532,
       "category": "①分",
@@ -57,8 +64,10 @@
     {
       "date": "2026-07-10",
       "price": 38334,
-      "category": "つみたて枠",
-      "amount": 10000
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2609
     },
     {
       "date": "2026-08-25",
@@ -69,8 +78,10 @@
     {
       "date": "2026-09-10",
       "price": 37174,
-      "category": "つみたて枠",
-      "amount": 10000
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2690
     }
   ],
   "tracers": [],
@@ -86,6 +97,46 @@
       "price": 19220,
       "category": "追加購入",
       "amount": 75000
+    }
+  ],
+  "sbi_v_sp500": [
+    {
+      "date": "2026-06-30",
+      "category": "既存残高",
+      "amount": 946682,
+      "units": 338996,
+      "account": "side"
+    },
+    {
+      "date": "2026-06-30",
+      "category": "既存残高（旧つみたてNISA）",
+      "amount": 1093338,
+      "units": 627490,
+      "account": "side"
+    },
+    {
+      "date": "2026-07-10",
+      "price": 41066,
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2435
+    },
+    {
+      "date": "2026-08-12",
+      "price": 41402,
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2416
+    },
+    {
+      "date": "2026-09-10",
+      "price": 39510,
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2531
     }
   ]
 }

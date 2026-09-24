@@ -31,6 +31,7 @@ FANG+は`config/settings.json`で`"active": false`としており、Tier到達�
 ## ダッシュボードの主な表示
 
 - **投資意思決定サマリー / 銘柄カード**: 各銘柄の現在の基準価額・設定来高値・下落率・Tier到達状況・判定（BUY/WAIT/HOLD/HIGH。新規購入停止のFANG+は「新規購入停止」）
+- **長期ポートフォリオ（攻撃フェーズ＋別枠積立）**: オルカン・Tracers・S&P500の攻撃フェーズ分と別枠積立分を合算した評価額と、**サテライト比率**（＝(Tracers＋S&P500)÷(オルカン＋Tracers＋S&P500)。目標20%との対比バー付き）。2028年月初の一括リバランス（オルカン80%／Tracers20%）の判断用
 - **平均取得単価と含み損益**: 約定実績から算出した銘柄別の平均取得単価と現在の基準価額の比較（含み益=緑／含み損=赤・乖離率）。SOXの2028年月初の出口判定に使用
 - **基準価額の推移とTier閾値**: 銘柄タブ選択時に、Tier1/2/3の閾値（破線）と購入実績（星マーカー。ホバーで約定日・単価・区分・金額）を表示
 - **市場心理（参考情報）**: VIX・米10年金利・USD/JPY（判定・通知には使用しない）
@@ -62,6 +63,8 @@ FANG+は`config/settings.json`で`"active": false`としており、Tier到達�
 │   ├── market_data.py          # 市場心理指標（VIX/米10年金利/USD-JPY）取得・判定
 │   ├── positions.py            # 保有ポジション（Tier投資対象外）取得・含み損益判定
 │   ├── purchase_history.py     # 購入実績（約定実績）の読み込み・平均取得単価の算出
+│   ├── portfolio.py            # 長期ポートフォリオ（攻撃フェーズ＋別枠積立）の統合ビュー・サテライト比率の算出
+│   ├── import_sbi_history.py   # SBI証券の約定履歴CSVを購入実績に取り込む（手動実行）
 │   ├── judge.py                # 判定ロジック
 │   ├── notify.py               # LINE通知
 │   └── generate_dashboard.py   # HTMLダッシュボード生成
@@ -164,16 +167,43 @@ GitHubリポジトリの **Settings → Secrets and variables → Actions** を�
 
 | 項目 | 内容 |
 |---|---|
-| キー（銘柄ID） | `tracers` / `sox` / `sp500` / `orkan` / `fang`、保有ポジションは`newnisa_orkan`等（`config/settings.json`の`id`） |
+| キー（銘柄ID） | `tracers` / `sox` / `sp500` / `orkan` / `fang`、別枠積立のSBI・V・S&P500は`sbi_v_sp500`、保有ポジションは`newnisa_orkan`等（`config/settings.json`の`id`） |
 | `date` | 約定日（SBI証券の約定履歴の約定日。例: `"2026-09-25"`） |
 | `price` | 約定単価（1万口あたりの基準価額）。未確認の場合は`null`（平均取得単価の計算から除外され、ダッシュボードに警告が出る） |
 | `category` | `Tier1`/`Tier2`/`Tier3`のほか`①分`・`定期積立`・`つみたて枠`等の自由な文言（マーカーはTier区分で色分け: Tier1=黄／Tier2=橙／Tier3=赤／その他=青） |
 | `amount` | 投入金額（受渡金額、円） |
+| `account`（任意） | `attack`（攻撃フェーズ＝成長投資枠。省略時）／`side`（別枠積立＝つみたて投資枠）。別枠積立は別会計で、平均取得単価カード・チャートのマーカーには含まれず、「長期ポートフォリオ」の合算にだけ使われます |
+| `units`（任意） | 保有口数。省略時は`投入金額÷約定単価×10,000`で算出。SBI約定履歴の約定数量や、既存残高のように単価ではなく口数と取得総額が分かる場合に指定します |
 
 - 平均取得単価 ＝ Σ投入金額 ÷ Σ購入口数 × 10,000（購入口数 ＝ 投入金額 ÷ 約定単価 × 10,000）
 - 保有ポジション（`newnisa_orkan`等）に実績を登録すると、含み損益の基準（取得単価）が平均取得単価になります
 - 実績が1件もない銘柄は、ダッシュボードに「データなし」と表示されます
 - Tierに到達したが投資を見送った場合は購入実績を追加せず、`triggered.json`を`judge.set_investment_status()`で「見送り」に補正します
+
+### 別枠積立（つみたて投資枠）の記録
+
+別枠積立（毎月のつみたて投資枠。オルカン30,000円＋Tracers20,000円）は`"account": "side"`で、攻撃フェーズと同じファンドでも別会計として記録します。
+
+```json
+{
+  "orkan": [
+    {"date": "2026-06-30", "category": "既存残高", "amount": 500000, "units": 130000, "account": "side"},
+    {"date": "2026-09-10", "price": 37174, "category": "別枠積立", "amount": 10000, "account": "side"}
+  ],
+  "sbi_v_sp500": [
+    {"date": "2026-07-10", "price": 41066, "category": "別枠積立", "amount": 10000, "account": "side"}
+  ]
+}
+```
+
+- **既存残高**（記録開始前に買った分）は、保有口数`units`と取得総額`amount`を1件の`既存残高`として登録します（SBI証券の保有残高画面のつみたて投資枠分から転記）。登録後は`config/settings.json`の`long_term_portfolio.provisional_note`を削除してください（暫定値の警告が消えます）
+- SBI・V・S&P500は別ファンドのため、キー`sbi_v_sp500`に記録し、基準価額は`positions.items`（`hidden: true`）から自動取得されます（S&P500合計評価額の計算用。保有ポジション欄やLINEには出ません）
+- **SBI証券の約定履歴CSVから取り込む場合**（CSVはコミットしないこと）:
+  ```bash
+  python scripts/import_sbi_history.py 約定履歴.csv --dry-run   # 取り込み予定の確認
+  python scripts/import_sbi_history.py 約定履歴.csv             # 取り込み（別枠積立＝NISA(つみたて)のみ。重複は自動スキップ）
+  ```
+  預り区分が「NISA(つみたて)」の約定を`side`として取り込みます（`--include-attack`で成長投資枠も取り込めますが、区分は「未分類」になります）。銘柄名と銘柄IDの対応は`config/settings.json`の`sbi_import`で設定します
 
 ---
 

@@ -186,15 +186,35 @@ def append_positions_history(today_str: str, prices: dict, position_ids: list[st
         logger.info(f"positions_history.csv: {today_str} はすでに存在するためスキップ")
         return
 
-    fieldnames = ["date"] + position_ids
+    # 既存ヘッダにない銘柄（新規追加ポジション）はヘッダに列を追加し、既存行を空欄で補完する
+    # （列ずれ防止。judge.append_history() と同じ方式）
+    header = []
+    if POSITIONS_HISTORY_FILE.exists():
+        with open(POSITIONS_HISTORY_FILE, "r", encoding="utf-8", newline="") as f:
+            header = next(csv.reader(f), [])
+    position_columns = [c for c in header if c != "date"]
+    for pid in position_ids:
+        if pid not in position_columns:
+            position_columns.append(pid)
+    fieldnames = ["date"] + position_columns
+
+    if header and header != fieldnames:
+        with open(POSITIONS_HISTORY_FILE, "r", encoding="utf-8", newline="") as f:
+            raw_rows = list(csv.DictReader(f))
+        with open(POSITIONS_HISTORY_FILE, "w", encoding="utf-8", newline="") as f:
+            migrated = csv.DictWriter(f, fieldnames=fieldnames, restval="")
+            migrated.writeheader()
+            migrated.writerows(raw_rows)
+        logger.info(f"positions_history.csv のヘッダを移行しました: {header} → {fieldnames}")
+
     file_exists = POSITIONS_HISTORY_FILE.exists()
 
     with open(POSITIONS_HISTORY_FILE, "a", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
         if not file_exists:
             writer.writeheader()
         row = {"date": today_str}
-        for pid in position_ids:
+        for pid in position_columns:
             val = prices.get(pid)
             row[pid] = f"{val:.2f}" if val is not None else ""
         writer.writerow(row)

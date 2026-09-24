@@ -17,7 +17,8 @@ from datetime import date, datetime
 from pathlib import Path
 
 from judge import decision_display, format_baseline_ratio, format_drawdown
-from purchase_history import calc_average_cost, position_purchases, resolve_cost_basis
+from portfolio import build_integrated_view
+from purchase_history import ACCOUNT_ATTACK, calc_average_cost, filter_by_account, position_purchases, resolve_cost_basis
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,8 @@ def generate(
     market_html = _build_market_sentiment(market_display or {})
     positions_html = _build_positions_section(positions_display or {})
     average_cost_html = _build_average_cost_section(settings, purchase_history or {}, navs, history)
+    prices = _current_prices(settings, navs, history, positions_display or {})
+    integrated_html = _build_integrated_section(build_integrated_view(settings, purchase_history or {}, prices))
     usdjpy_rate = (market_display or {}).get("usdjpy", {}).get("value")
     positions_chart_data = _build_positions_chart_data(positions_history or [], settings, usdjpy_rate, purchase_history or {})
 
@@ -65,6 +68,7 @@ def generate(
         market_html=market_html,
         positions_html=positions_html,
         average_cost_html=average_cost_html,
+        integrated_html=integrated_html,
         chart_data_json=json.dumps(chart_data, ensure_ascii=False),
         positions_chart_data_json=json.dumps(positions_chart_data, ensure_ascii=False),
         settings=settings,
@@ -154,7 +158,7 @@ def _build_chart_data(history: list[dict], settings: dict, peak: dict, purchase_
     purchase_markers = {}
     for fund in settings["funds"]:
         fid = fund["id"]
-        records = (purchase_history or {}).get(fid, [])
+        records = filter_by_account((purchase_history or {}).get(fid, []), ACCOUNT_ATTACK)
         markers = []
         for r in records:
             if not r.get("price"):
@@ -187,7 +191,7 @@ def _build_positions_chart_data(positions_history: list[dict], settings: dict, u
     USD建て銘柄（テスラ等）は、現在のUSD/JPYレートで一律換算した近似値をプロットする
     （為替レートの日次履歴は保持していないため、過去分も現在レートで換算する近似）。
     """
-    items = settings.get("positions", {}).get("items", [])
+    items = [i for i in settings.get("positions", {}).get("items", []) if not i.get("hidden")]
     recent = positions_history[-180:] if len(positions_history) > 180 else positions_history
     labels = [r["date"] for r in recent]
     label_index = {d: i for i, d in enumerate(labels)}
@@ -471,6 +475,7 @@ def _build_positions_section(positions_display: dict) -> str:
     保有ポジション（Tier投資対象外・監視専用）カードのHTMLを生成する。
     含み損益（現在価格と取得単価の差）を表示するだけで、BUY/WAIT判定には使用しない。
     """
+    positions_display = {k: v for k, v in positions_display.items() if not v.get("hidden")}
     if not positions_display:
         return '<div class="market-empty">保有ポジションのデータを準備中です。次回の自動実行後に表示されます。</div>'
 
@@ -511,6 +516,126 @@ def _build_positions_section(positions_display: dict) -> str:
     return "\n".join(cards)
 
 
+def _current_prices(settings: dict, navs: dict, history: list[dict], positions_display: dict) -> dict:
+    """
+    統合ビューの評価額計算に使う「銘柄ID→現在の基準価額」を作る。
+    Tier対象ファンドは当日取得の navs（取得失敗時は history.csv の最新値）、
+    保有ポジション系（SBI・V等、hidden含む）は positions_display の値を使う。
+    """
+    prices = {}
+    for f in settings["funds"]:
+        fid = f["id"]
+        nav = navs.get(fid)
+        if nav is None:
+            nav = next((r.get(fid) for r in reversed(history) if r.get(fid) is not None), None)
+        prices[fid] = nav
+    for pid, p in positions_display.items():
+        prices[pid] = p.get("value")
+    return prices
+
+
+def _yen(v: float | None) -> str:
+    return f"{v:,.0f}円" if v is not None else "算出不可"
+
+
+def _build_integrated_section(view: dict | None) -> str:
+    """
+    長期ポートフォリオ（攻撃フェーズ＋別枠積立）の統合ビューのセクションHTMLを生成する。
+    サテライト比率と目標との対比、銘柄グループ別の口座別評価額・合計評価額を表示する（表示専用）。
+    view が None（未設定・無効）の場合は空文字を返す。
+    """
+    if view is None:
+        return ""
+
+    ratio = view["satellite_ratio"]
+    target = view["target_percent"]
+    provisional = (
+        f'<p class="pf-warn">⚠ {view["provisional"]}</p>' if view.get("provisional") else ""
+    )
+
+    if ratio is None:
+        hero = (
+            '<div class="sat-hero"><div class="sat-hero__label">サテライト比率</div>'
+            '<div class="sat-hero__value" style="font-size:20px;">算出不可</div>'
+            '<div class="market-card__note">現在の基準価額を取得できない銘柄があるため算出できません（次回の実行で再計算されます）。</div></div>'
+        )
+    else:
+        diff = view["diff_pt"]
+        over = diff > 0
+        state_css = "pos-warning" if over else "pos-good"
+        state_txt = f"目標より {abs(diff):.1f}pt 高い" if over else f"目標より {abs(diff):.1f}pt 低い"
+        adj = view["adjustment_amount"]
+        adj_txt = (
+            f"参考: 目標比率に戻すには、サテライトを約{abs(adj):,.0f}円分 コア（オルカン）へ移す規模です"
+            if adj > 0 else
+            f"参考: 目標比率まであと、サテライトが約{abs(adj):,.0f}円分 不足しています"
+        )
+        fill = max(0.0, min(ratio, 100.0))
+        hero = (
+            '<div class="sat-hero">'
+            f'<div class="sat-hero__label">サテライト比率（目標 {target:.0f}%）</div>'
+            f'<div class="sat-hero__row"><span class="sat-hero__value">{ratio:.1f}%</span>'
+            f'<span class="status-badge {state_css}">{state_txt}</span></div>'
+            '<div class="sat-bar">'
+            f'<div class="sat-bar__fill" style="width:{fill:.1f}%"></div>'
+            f'<div class="sat-bar__target" style="left:{target:.1f}%"></div>'
+            f'<div class="sat-bar__target-label" style="left:{target:.1f}%">目標{target:.0f}%</div>'
+            '</div>'
+            f'<div class="market-card__note">{adj_txt}（参考値。リバランスの判断は手動）</div>'
+            '</div>'
+        )
+
+    total = view["total_value"]
+    rows = []
+    for g in view["groups"]:
+        by_account = {"attack": 0.0, "side": 0.0}
+        missing = {"attack": False, "side": False}
+        for h in g["holdings"]:
+            if h["value"] is None:
+                missing[h["account"]] = True
+            else:
+                by_account[h["account"]] += h["value"]
+        cells = []
+        for acct in ("attack", "side"):
+            cells.append(f"<td>{'算出不可' if missing[acct] else _yen(by_account[acct])}</td>")
+        share = (g["total_value"] / total * 100) if (g["total_value"] is not None and total) else None
+        share_txt = f"{share:.1f}%" if share is not None else "-"
+        role_txt = "サテライト" if g["role"] == "satellite" else "コア"
+        costs = []
+        for h in g["holdings"]:
+            if h["avg_cost"] is not None:
+                acct = "攻撃" if h["account"] == "attack" else "別枠"
+                costs.append(f"{acct} {h['avg_cost']:,.0f}円")
+        cost_txt = "／".join(costs) if costs else "データなし"
+        rows.append(
+            "<tr>"
+            f"<td><strong>{g['label']}</strong><div class=\"market-card__note\">{role_txt}</div></td>"
+            + cells[0] + cells[1]
+            + f"<td><strong>{_yen(g['total_value'])}</strong></td>"
+            f"<td>{share_txt}</td>"
+            f"<td style=\"font-size:11px;\">{cost_txt}</td>"
+            "</tr>"
+        )
+    total_row = (
+        f'<tr><td><strong>合計</strong></td><td></td><td></td><td><strong>{_yen(total)}</strong></td><td>100%</td><td></td></tr>'
+        if total is not None else ""
+    )
+
+    return (
+        '<section class="section-panel">'
+        '<div class="section-title">🏦 長期ポートフォリオ（攻撃フェーズ＋別枠積立）</div>'
+        '<p class="market-disclaimer">2028年月初のリバランス判断用に、同じファンドの攻撃フェーズ分（成長投資枠）と別枠積立分（つみたて投資枠）を合算した評価額です。'
+        '参考情報であり、BUY/WAITの判定・LINE通知には使用しません。サテライト比率＝（Tracers＋S&P500）÷（オルカン＋Tracers＋S&P500）。</p>'
+        f'{provisional}{hero}'
+        '<div class="table-wrapper" style="margin-top:16px;"><table class="funds-table">'
+        '<thead><tr><th>銘柄</th><th>攻撃フェーズ</th><th>別枠積立</th><th>合計評価額</th><th>構成比</th><th>平均取得単価</th></tr></thead>'
+        f'<tbody>{"".join(rows)}{total_row}</tbody></table></div>'
+        '<p class="market-disclaimer" style="margin-top:10px;">評価額＝保有口数×現在の基準価額（既存残高を含む）。S&P500の別枠積立分はSBI・V・S&P500の基準価額で評価。'
+        'SOX・FANG+・はじめてのNISA・テスラは含みません。</p>'
+        '</section>'
+    )
+
+
 def _build_average_cost_section(settings: dict, purchase_history: dict, navs: dict, history: list[dict]) -> str:
     """
     銘柄ごとの平均取得単価と現在の基準価額を並べ、含み益/含み損を表示するカードのHTMLを生成する。
@@ -520,7 +645,7 @@ def _build_average_cost_section(settings: dict, purchase_history: dict, navs: di
     cards = []
     for fund in settings["funds"]:
         fid = fund["id"]
-        records = purchase_history.get(fid, [])
+        records = filter_by_account(purchase_history.get(fid, []), ACCOUNT_ATTACK)
         if not fund.get("active", True) and not records:
             continue
 
@@ -629,6 +754,7 @@ def _render_html(
     market_html: str,
     positions_html: str,
     average_cost_html: str,
+    integrated_html: str,
     chart_data_json: str,
     positions_chart_data_json: str,
     settings: dict,
@@ -646,6 +772,7 @@ def _render_html(
     positions_tabs = "".join(
         f'<button class="chart-tab" data-position="{item["id"]}">{item.get("short_name", item["id"])}</button>'
         for item in settings.get("positions", {}).get("items", [])
+        if not item.get("hidden")
     )
 
     if phase_type == "before_start":
@@ -801,6 +928,15 @@ body{{
 }}
 .fund-card__name{{ font-size: 15px; font-weight: 700; margin-top: 4px; }}
 .inactive-tag{{ font-size: 10px; font-weight: 400; color: var(--text-mute); margin-left: 6px; }}
+.sat-hero{{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--radius); padding: 18px 20px; }}
+.sat-hero__label{{ font-size: 12px; font-weight: 700; color: var(--text-mute); margin-bottom: 6px; }}
+.sat-hero__row{{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }}
+.sat-hero__value{{ font-size: 34px; font-weight: 700; font-family: 'Outfit', sans-serif; color: var(--text); }}
+.sat-bar{{ position: relative; height: 12px; background: rgba(255,255,255,0.06); border-radius: 6px; margin: 22px 0 8px; }}
+.sat-bar__fill{{ height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); border-radius: 6px; }}
+.sat-bar__target{{ position: absolute; top: -5px; width: 2px; height: 22px; background: var(--yellow); }}
+.sat-bar__target-label{{ position: absolute; top: -22px; transform: translateX(-50%); font-size: 10px; color: var(--yellow); white-space: nowrap; }}
+.pf-warn{{ font-size: 11px; color: var(--yellow); margin-bottom: 12px; line-height: 1.6; }}
 .fund-card__metrics{{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }}
 .metric-item{{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--inner-radius); padding: 12px; }}
 .metric-item--highlight{{ border: 1px solid rgba(239, 68, 68, 0.2); }}
@@ -954,6 +1090,9 @@ body{{
       </table>
     </div>
   </section>
+
+  <!-- ===== 長期ポートフォリオ（統合ビュー） ===== -->
+  {integrated_html}
 
   <!-- ===== 平均取得単価と含み損益 ===== -->
   <section class="section-panel">

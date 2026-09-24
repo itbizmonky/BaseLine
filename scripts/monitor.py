@@ -242,6 +242,7 @@ def main(dry_run: bool = False) -> None:
                     "level": judge_gain_loss_level(ratio, gain_loss_thresholds),
                     "color": item.get("color", "#94a3b8"),
                     "purchases": position_purchases(item, purchase_records.get(pid, [])),
+                    "hidden": bool(item.get("hidden", False)),
                 }
 
             new_positions = update_positions(old_positions, fetched_positions, today_str)

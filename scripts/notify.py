@@ -166,9 +166,11 @@ def build_daily_summary_message(
             f"   基準日比: {format_baseline_ratio(r.get('baseline_ratio'))} ({tier_str})"
         )
 
-    if positions_display:
+    # hidden=true（統合ビュー用に基準価額だけ取得している銘柄）はLINEに出さない
+    visible_positions = {k: v for k, v in (positions_display or {}).items() if not v.get("hidden")}
+    if visible_positions:
         lines.append("\n📦 保有ポジション（監視専用・Tier対象外）")
-        for p in positions_display.values():
+        for p in visible_positions.values():
             level = p.get("level", {})
             emoji = level.get("emoji", "⚪")
             label = level.get("label", "-")

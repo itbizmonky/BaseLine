@@ -49,7 +49,9 @@ data/market.json / positions.json / positions_history.csv  # 市場心理・保�
 scripts/fetch_nav.py     # 日経新聞スクレイピング
 scripts/market_data.py   # 市場心理指標（VIX/米10年金利/USD-JPY）
 scripts/positions.py     # 保有ポジション（Tier対象外）の取得・含み損益判定
-scripts/purchase_history.py  # 購入実績の読み込み・平均取得単価の算出（表示専用。判定・通知には使わない）
+scripts/purchase_history.py  # 購入実績の読み込み・平均取得単価の算出（表示専用。判定・通知には使わない）。実績は口座区分account(attack/side)・units(口数)を任意で持つ
+scripts/portfolio.py     # 長期ポートフォリオ（攻撃フェーズ＋別枠積立）の統合ビュー・サテライト比率（表示専用の純粋関数。設定はsettings.jsonのlong_term_portfolio）
+scripts/import_sbi_history.py  # SBI証券の約定履歴CSVをpurchase_history.jsonへ取り込む（手動実行。CSVはコミットしない）
 scripts/judge.py         # 下落率/Tier/期間/購入判定/トレンド計算ロジック
 scripts/notify.py        # LINE Messaging API 通知（メッセージ生成 + 送信）
 scripts/generate_dashboard.py  # public/index.html 生成
@@ -93,6 +95,7 @@ GitHub Actions 上では `workflow_dispatch` から `dry_run: true` で手動テ
 - **public/index.html は生成物**。手動編集しても次回実行で上書きされる。テンプレート変更は `generate_dashboard.py` を編集する。
 - **銘柄の追加・停止は設定のみで行う**: `settings.json`の`funds`に追加、新規購入停止は`"active": false`。`history.csv`は列が自動で増える。銘柄IDをコードに固定しない（`.get(fund_id, [])`で未登録を空扱いする）。
 - **`--dry-run`は通知送信コードパスを通らない**（8/10-11の本番クラッシュの教訓、要件定義書 残課題No.7）。通知関連の変更は`_send_line_message`をモックして`notify_*`を実際に呼んで確認すること。また`--dry-run`もデータファイル（`data/*`）を書き換えるため、テスト後は`git checkout`で戻す（本番の記録はGitHub Actionsに一本化）。
+- **別枠積立（つみたて投資枠）は別会計**: `purchase_history.json`の`account:"side"`で記録し、平均取得単価カード・チャートマーカー（攻撃フェーズ=`attack`、省略時）には含めない。合算は`portfolio.py`（統合ビュー）だけが行う。`positions.items`の`hidden:true`は「基準価額の取得・保存のみ行い、カード/チャートタブ/LINEには出さない」（SBI・V・S&P500）。
 - **公開リポジトリ**: SBI証券の約定履歴CSV等の個人の取引明細はコミットしない。
 - **スコープ外**: 自動発注、高度な予測AI、複数ユーザー対応・ログイン機能、SOXの出口判定（売却判定）の自動化は要件定義で明示的に対象外。
 

@@ -152,6 +152,19 @@
         "currency": "USD",
         "cost_basis": 317.00,
         "color": "#e11d48"
+      },
+      {
+        "id": "sbi_v_sp500",
+        "name": "SBI・V・S&P500インデックス・ファンド",
+        "short_name": "SBI・V・S&P500",
+        "company": "SBIアセットマネジメント",
+        "fund_code": "89311199",
+        "source": "nikkei_fund",
+        "currency": "JPY",
+        "cost_basis": 0,
+        "hidden": true,
+        "hidden_note": "長期ポートフォリオの統合ビュー（S&P500合計評価額）用に基準価額のみ取得・保存する。保有ポジションのカード／チャートタブ／LINE日次サマリーには表示しない",
+        "color": "#64748b"
       }
     ],
     "gain_loss_thresholds": {
@@ -160,5 +173,55 @@
       "caution": -10,
       "warning": -20
     }
+  },
+  "sbi_import": {
+    "_comment": "scripts/import_sbi_history.py（SBI証券の約定履歴CSV取り込み）用の設定。account_mapはCSVの預り区分→口座（attack=攻撃フェーズ/成長投資枠、side=別枠積立/つみたて投資枠）。fund_keywordsは銘柄名（全角→半角に正規化後）に含まれるキーワード→purchase_history.jsonのキー",
+    "account_map": {
+      "NISA (成長)": "attack",
+      "NISA (つみたて)": "side"
+    },
+    "fund_keywords": {
+      "orkan": ["eMAXIS Slim 全世界株式(オール・カントリー)"],
+      "sp500": ["eMAXIS Slim 米国株式(S&P500)"],
+      "sox": ["ニッセイSOX"],
+      "fang": ["iFreeNEXT FANG+"],
+      "tracers": ["Tracers S&P500トップ10"],
+      "sbi_v_sp500": ["SBI・V・S&P500"],
+      "newnisa_orkan": ["はじめてのNISA・全世界株式"]
+    }
+  },
+  "long_term_portfolio": {
+    "_comment": "長期ポートフォリオ（攻撃フェーズ＋別枠積立）の統合ビュー。表示専用でTier判定・LINE通知には使わない。holdingsのfund_idはpurchase_history.jsonのキー、accountはattack（攻撃フェーズ=成長投資枠）／side（別枠積立=つみたて投資枠）。評価額=保有口数×現在の基準価額。サテライト比率=roleがsatelliteのグループ合計÷全グループ合計。2028年月初にオルカン80%／Tracers20%へ一括リバランスする判断に使う（判定・売却の自動化はしない）",
+    "enabled": true,
+    "satellite_target_percent": 20,
+    "groups": [
+      {
+        "id": "orkan",
+        "label": "オルカン",
+        "role": "core",
+        "holdings": [
+          {"fund_id": "orkan", "account": "attack"},
+          {"fund_id": "orkan", "account": "side"}
+        ]
+      },
+      {
+        "id": "tracers",
+        "label": "Tracers",
+        "role": "satellite",
+        "holdings": [
+          {"fund_id": "tracers", "account": "attack"},
+          {"fund_id": "tracers", "account": "side"}
+        ]
+      },
+      {
+        "id": "sp500",
+        "label": "S&P500",
+        "role": "satellite",
+        "holdings": [
+          {"fund_id": "sp500", "account": "attack"},
+          {"fund_id": "sbi_v_sp500", "account": "side"}
+        ]
+      }
+    ]
   }
 }

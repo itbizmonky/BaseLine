@@ -198,12 +198,18 @@ GitHubリポジトリの **Settings → Secrets and variables → Actions** を�
 
 - **既存残高**（記録開始前に買った分）は、保有口数`units`と取得総額`amount`を1件の`既存残高`として登録します（SBI証券の保有残高画面のつみたて投資枠分から転記）。登録後は`config/settings.json`の`long_term_portfolio.provisional_note`を削除してください（暫定値の警告が消えます）
 - SBI・V・S&P500は別ファンドのため、キー`sbi_v_sp500`に記録し、基準価額は`positions.items`（`hidden: true`）から自動取得されます（S&P500合計評価額の計算用。保有ポジション欄やLINEには出ません）
-- **SBI証券の約定履歴CSVから取り込む場合**（CSVはコミットしないこと）:
+- **【推奨】SBI証券の約定履歴CSVから、取り込み〜コミット・プッシュまで1コマンドで行う**（CSVはコミットしないこと。手作業は月1回、CSVのダウンロードだけです）:
   ```bash
-  python scripts/import_sbi_history.py 約定履歴.csv --dry-run   # 取り込み予定の確認
-  python scripts/import_sbi_history.py 約定履歴.csv             # 取り込み（別枠積立＝NISA(つみたて)のみ。重複は自動スキップ）
+  python scripts/update_purchases.py 約定履歴.csv
   ```
-  預り区分が「NISA(つみたて)」の約定を`side`として取り込みます（`--include-attack`で成長投資枠も取り込めますが、区分は「未分類」になります）。銘柄名と銘柄IDの対応は`config/settings.json`の`sbi_import`で設定します
+  1. 取り込み予定（銘柄・約定日・単価・金額・口座・区分）を表示 → 確認（y/N）
+  2. `data/purchase_history.json`へ書き込み、攻撃フェーズ分の平均取得単価を表示
+  3. `purchase_history.json`だけをコミット → 確認（y/N）→ リモートの日次更新を取り込んでプッシュ
+
+  `--yes`で確認を省略、`--no-push`でコミットまで。約定単価が確定した後（積立日の数日後）に実行してください。重複は自動でスキップされるので、期間が重なるCSVでも何度でも実行できます。
+  - 口座は預り区分から自動判定します（NISA(つみたて)→別枠積立`side`、NISA(成長)→攻撃フェーズ`attack`）
+  - 攻撃フェーズの区分は日付から自動推定します（初回購入日2026-07-07→「①分」、毎月25日→「定期積立」、それ以外→「未分類」。規則は`config/settings.json`の`sbi_import.attack_category_rules`）。**Tier1〜3の約定は自動判定できない**ため、グラフのマーカーをTier色にしたい場合だけ`purchase_history.json`の`category`を手動で書き換えてください（平均取得単価の計算には影響しません）
+  - 取り込みだけ行う場合: `python scripts/import_sbi_history.py 約定履歴.csv [--include-attack] [--dry-run]`（既定は別枠積立のみ）。銘柄名と銘柄IDの対応は`config/settings.json`の`sbi_import`で設定します
 
 ---
 

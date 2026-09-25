@@ -7,8 +7,9 @@ SBI証券の約定履歴CSVを data/purchase_history.json に取り込むスク�
 
 - 預り区分から口座を自動判定する（config/settings.json の sbi_import.account_map）:
     NISA (つみたて) → side（別枠積立） / NISA (成長) → attack（攻撃フェーズ）
-- 既定では別枠積立（side）のみ取り込む。攻撃フェーズ（attack）の区分（①分・Tier1・定期積立など）は
-  CSVから判定できないため、--include-attack を付けた場合のみ取り込み、区分は「未分類」とする
+- 既定では別枠積立（side）のみ取り込む。攻撃フェーズ（attack）は --include-attack を付けた場合のみ取り込み、
+  区分は config/settings.json の sbi_import.attack_category_rules で日付から自動推定する
+  （初回購入日→「①分」、毎月の積立日→「定期積立」、それ以外→「未分類」。Tier1〜3などは手動で書き換える）
 - 銘柄名は全角→半角に正規化し、sbi_import.fund_keywords のキーワードで銘柄IDに対応付ける
   （対応しない銘柄＝監視対象外ファンドは無視する）
 - 同じ（銘柄・約定日・金額・口座）の実績が既にある場合は重複として取り込まない（何度実行しても安全）
@@ -29,6 +30,8 @@ PURCHASE_FILE = ROOT / "data" / "purchase_history.json"
 
 def read_csv_rows(path: Path) -> list[list[str]]:
     """SBI証券のCSV（UTF-8/CP932どちらでも可）を読み、約定データ行（ヘッダ行の次以降）を返す。"""
+    if not path.exists():
+        raise SystemExit(f"CSVが見つかりません: {path}")
     raw = path.read_bytes()
     for enc in ("utf-8-sig", "cp932"):
         try:
@@ -56,6 +59,17 @@ def parse_int(s: str) -> int | None:
         return None
 
 
+def attack_category(date: str, rules: dict | None) -> str:
+    """攻撃フェーズの約定の区分を日付から推定する（初回購入日→①分、毎月の積立日→定期積立、それ以外→未分類）。"""
+    rules = rules or {}
+    if date == rules.get("initial_purchase_date"):
+        return rules.get("initial_category", "①分")
+    day = int(date[8:10]) if len(date) >= 10 and date[8:10].isdigit() else None
+    if day is not None and day == rules.get("recurring_day_of_month"):
+        return rules.get("recurring_category", "定期積立")
+    return rules.get("default", "未分類")
+
+
 def build_records(rows, cfg: dict, include_attack: bool) -> tuple[list[tuple[str, dict]], list[str], int]:
     """CSV行から (銘柄ID, レコード) のリストを作る。戻り値: (実績, 対応しなかった銘柄名, 口座対象外の件数)"""
     account_map = {norm(k): v for k, v in cfg["account_map"].items()}
@@ -78,7 +92,7 @@ def build_records(rows, cfg: dict, include_attack: bool) -> tuple[list[tuple[str
         rec = {
             "date": date,
             "price": price,
-            "category": "別枠積立" if account == "side" else "未分類",
+            "category": "別枠積立" if account == "side" else attack_category(date, cfg.get("attack_category_rules")),
             "amount": amount,
             "account": account,
         }
@@ -93,20 +107,18 @@ def is_duplicate(existing: list[dict], rec: dict) -> bool:
     return any((e.get("date"), e.get("amount"), e.get("account") or "attack") == key for e in existing)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="SBI証券の約定履歴CSVを purchase_history.json に取り込む")
-    parser.add_argument("csv", type=Path, help="SBI証券の約定履歴CSV")
-    parser.add_argument("--include-attack", action="store_true", help="攻撃フェーズ（成長投資枠）の約定も取り込む（区分は「未分類」）")
-    parser.add_argument("--dry-run", action="store_true", help="書き込まず取り込み予定だけを表示する")
-    args = parser.parse_args()
-
+def import_csv(csv_path: Path, include_attack: bool, write: bool) -> dict:
+    """
+    CSVを読み、取り込み予定を表示する。write=True の場合は purchase_history.json に書き込む。
+    Returns: {"added": [(銘柄ID, レコード)], "duplicates": int, "skipped_account": int, "unmapped": [str]}
+    """
     settings = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
     cfg = settings.get("sbi_import")
     if not cfg:
         raise SystemExit("config/settings.json に sbi_import の設定がありません")
 
     history = json.loads(PURCHASE_FILE.read_text(encoding="utf-8")) if PURCHASE_FILE.exists() else {}
-    records, unmapped, skipped_account = build_records(read_csv_rows(args.csv), cfg, args.include_attack)
+    records, unmapped, skipped_account = build_records(read_csv_rows(csv_path), cfg, include_attack)
 
     added, dup = [], 0
     for fund_id, rec in records:
@@ -123,12 +135,22 @@ def main() -> int:
     if unmapped:
         print("監視対象外として無視した銘柄: " + " / ".join(unmapped))
 
-    if added and not args.dry_run:
+    if added and write:
         for records_ in history.values():
             records_.sort(key=lambda r: r.get("date", ""))
         PURCHASE_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"{PURCHASE_FILE} に書き込みました")
-    elif args.dry_run:
+    return {"added": added, "duplicates": dup, "skipped_account": skipped_account, "unmapped": unmapped}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="SBI証券の約定履歴CSVを purchase_history.json に取り込む")
+    parser.add_argument("csv", type=Path, help="SBI証券の約定履歴CSV")
+    parser.add_argument("--include-attack", action="store_true", help="攻撃フェーズ（成長投資枠）の約定も取り込む（区分は日付から推定）")
+    parser.add_argument("--dry-run", action="store_true", help="書き込まず取り込み予定だけを表示する")
+    args = parser.parse_args()
+    import_csv(args.csv, args.include_attack, write=not args.dry_run)
+    if args.dry_run:
         print("[dry-run] 書き込みは行っていません")
     return 0
 

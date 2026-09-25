@@ -51,7 +51,8 @@ scripts/market_data.py   # 市場心理指標（VIX/米10年金利/USD-JPY）
 scripts/positions.py     # 保有ポジション（Tier対象外）の取得・含み損益判定
 scripts/purchase_history.py  # 購入実績の読み込み・平均取得単価の算出（表示専用。判定・通知には使わない）。実績は口座区分account(attack/side)・units(口数)を任意で持つ
 scripts/portfolio.py     # 長期ポートフォリオ（攻撃フェーズ＋別枠積立）の統合ビュー・サテライト比率（表示専用の純粋関数。設定はsettings.jsonのlong_term_portfolio）
-scripts/import_sbi_history.py  # SBI証券の約定履歴CSVをpurchase_history.jsonへ取り込む（手動実行。CSVはコミットしない）
+scripts/import_sbi_history.py  # SBI証券の約定履歴CSVをpurchase_history.jsonへ取り込む（手動実行。口座は預り区分、攻撃フェーズの区分は日付から自動推定。CSVはコミットしない）
+scripts/update_purchases.py    # 上記の取り込み→purchase_history.jsonのみコミット→pull --rebase→プッシュを確認つきで1コマンド実行（手動実行）
 scripts/judge.py         # 下落率/Tier/期間/購入判定/トレンド計算ロジック
 scripts/notify.py        # LINE Messaging API 通知（メッセージ生成 + 送信）
 scripts/generate_dashboard.py  # public/index.html 生成

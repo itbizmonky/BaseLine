@@ -270,6 +270,14 @@
       "nasdaq100": [
         "ニッセイNASDAQ100"
       ]
+    },
+    "attack_category_rules": {
+      "_comment": "攻撃フェーズ（成長投資枠）の約定の区分を日付から推定する規則（--include-attack時）。初回購入日→initial_category、毎月の積立日→recurring_category、それ以外→default。Tier1〜3の約定は自動判定できないため、必要ならpurchase_history.jsonのcategoryを手動で書き換える",
+      "initial_purchase_date": "2026-07-07",
+      "initial_category": "①分",
+      "recurring_day_of_month": 25,
+      "recurring_category": "定期積立",
+      "default": "未分類"
     }
   },
   "long_term_portfolio": {

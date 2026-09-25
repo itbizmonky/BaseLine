@@ -272,12 +272,24 @@
       ]
     },
     "attack_category_rules": {
-      "_comment": "攻撃フェーズ（成長投資枠）の約定の区分を日付から推定する規則（--include-attack時）。初回購入日→initial_category、毎月の積立日→recurring_category、それ以外→default。Tier1〜3の約定は自動判定できないため、必要ならpurchase_history.jsonのcategoryを手動で書き換える",
+      "_comment": "攻撃フェーズ（成長投資枠・現金）の約定の区分を日付から推定する規則（--include-attack時）。初回購入日→initial_category、毎月の積立の約定日（発注は毎月23日、約定は25日前後）がrecurring_day_rangeに入れば→recurring_category、それ以外→default。Tier1〜3の約定は自動判定できないため、必要ならpurchase_history.jsonのcategoryを手動で書き換える",
       "initial_purchase_date": "2026-07-07",
       "initial_category": "①分",
-      "recurring_day_of_month": 25,
       "recurring_category": "定期積立",
-      "default": "未分類"
+      "default": "未分類",
+      "recurring_day_range": [
+        23,
+        27
+      ]
+    },
+    "side_fixed_amounts": {
+      "_comment": "別枠積立（クレジットカード払い）の毎月の固定金額（円）。CSVに決済方法の列がなく、Tracersの別枠積立は預り区分が成長投資枠のため、銘柄ごとの金額で別枠積立と判定する。積立金額を変えたらここも更新する",
+      "orkan": [
+        30000
+      ],
+      "tracers": [
+        20000
+      ]
     }
   },
   "long_term_portfolio": {
@@ -375,5 +387,50 @@
         ]
       }
     ]
+  },
+  "monthly_schedule": {
+    "_comment": "毎月の積立設定（SBI証券。2026-09-25のスクリーンショットより）。ダッシュボードの「毎月の運用手順」に表示するだけで、判定・通知には使わない。積立設定を変更したらここも更新する。別枠積立＝クレジットカード払い、攻撃フェーズ＝現金（成長投資枠）。execution_dayは約定日の目安（約定履歴の実績。約定は発注の1〜3営業日後）",
+    "attack": {
+      "label": "攻撃フェーズの毎月積立",
+      "order_day": 23,
+      "payment": "現金・NISA（成長）",
+      "items": [
+        {
+          "fund": "Tracers",
+          "amount": 21765
+        },
+        {
+          "fund": "SOX",
+          "amount": 14706
+        },
+        {
+          "fund": "eMAXIS Slim 米国株式（S&P500）",
+          "amount": 11765
+        },
+        {
+          "fund": "eMAXIS Slim 全世界株式（オルカン）",
+          "amount": 10588
+        }
+      ],
+      "execution_day": 25
+    },
+    "side": {
+      "label": "別枠積立",
+      "order_day": 9,
+      "payment": "クレジットカード",
+      "items": [
+        {
+          "fund": "eMAXIS Slim 全世界株式（オルカン）",
+          "amount": 30000,
+          "account_label": "NISA（つみたて）"
+        },
+        {
+          "fund": "Tracers",
+          "amount": 20000,
+          "account_label": "NISA（成長）"
+        }
+      ],
+      "execution_day": 10
+    }
   }
 }

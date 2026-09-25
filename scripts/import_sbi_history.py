@@ -7,9 +7,11 @@ SBI証券の約定履歴CSVを data/purchase_history.json に取り込むスク�
 
 - 預り区分から口座を自動判定する（config/settings.json の sbi_import.account_map）:
     NISA (つみたて) → side（別枠積立） / NISA (成長) → attack（攻撃フェーズ）
+  ただし別枠積立はクレジットカード払いで、Tracersのように成長投資枠のものもある（CSVに決済方法の列がない）ため、
+  sbi_import.side_fixed_amounts（銘柄ごとの別枠積立の固定金額）に一致する約定は side とみなす
 - 既定では別枠積立（side）のみ取り込む。攻撃フェーズ（attack）は --include-attack を付けた場合のみ取り込み、
   区分は config/settings.json の sbi_import.attack_category_rules で日付から自動推定する
-  （初回購入日→「①分」、毎月の積立日→「定期積立」、それ以外→「未分類」。Tier1〜3などは手動で書き換える）
+  （初回購入日→「①分」、毎月の積立の約定日（23〜27日）→「定期積立」、それ以外→「未分類」。Tier1〜3などは手動で書き換える）
 - 銘柄名は全角→半角に正規化し、sbi_import.fund_keywords のキーワードで銘柄IDに対応付ける
   （対応しない銘柄＝監視対象外ファンドは無視する）
 - 同じ（銘柄・約定日・金額・口座）の実績が既にある場合は重複として取り込まない（何度実行しても安全）
@@ -65,7 +67,8 @@ def attack_category(date: str, rules: dict | None) -> str:
     if date == rules.get("initial_purchase_date"):
         return rules.get("initial_category", "①分")
     day = int(date[8:10]) if len(date) >= 10 and date[8:10].isdigit() else None
-    if day is not None and day == rules.get("recurring_day_of_month"):
+    lo, hi = rules.get("recurring_day_range") or [rules.get("recurring_day_of_month")] * 2
+    if day is not None and lo is not None and lo <= day <= hi:
         return rules.get("recurring_category", "定期積立")
     return rules.get("default", "未分類")
 
@@ -84,6 +87,10 @@ def build_records(rows, cfg: dict, include_attack: bool) -> tuple[list[tuple[str
         if fund_id is None:
             unmapped.append(name)
             continue
+        # 別枠積立はクレジットカード払いの積立で、預り区分が成長投資枠のもの（Tracers）もある。CSVには決済方法の
+        # 列がないため、銘柄ごとの別枠積立の固定金額（side_fixed_amounts）に一致する約定は別枠積立とみなす
+        if amount in (cfg.get("side_fixed_amounts") or {}).get(fund_id, []):
+            account = "side"
         if account is None or (account == "attack" and not include_attack):
             skipped_account += 1
             continue

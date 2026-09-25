@@ -96,7 +96,7 @@ GitHub Actions 上では `workflow_dispatch` から `dry_run: true` で手動テ
 - **public/index.html は生成物**。手動編集しても次回実行で上書きされる。テンプレート変更は `generate_dashboard.py` を編集する。
 - **銘柄の追加・停止は設定のみで行う**: `settings.json`の`funds`に追加、新規購入停止は`"active": false`。`history.csv`は列が自動で増える。銘柄IDをコードに固定しない（`.get(fund_id, [])`で未登録を空扱いする）。
 - **`--dry-run`は通知送信コードパスを通らない**（8/10-11の本番クラッシュの教訓、要件定義書 残課題No.7）。通知関連の変更は`_send_line_message`をモックして`notify_*`を実際に呼んで確認すること。また`--dry-run`もデータファイル（`data/*`）を書き換えるため、テスト後は`git checkout`で戻す（本番の記録はGitHub Actionsに一本化）。
-- **別枠積立（つみたて投資枠）は別会計**: `purchase_history.json`の`account:"side"`で記録し、平均取得単価カード・チャートマーカー（攻撃フェーズ=`attack`、省略時）には含めない。合算は`portfolio.py`（統合ビュー）だけが行う。口座区分は`attack`（攻撃フェーズ）/`side`（別枠積立）/`legacy`（旧つみたてNISA。保持方針）。統合ビューは保有全ファンドの評価額合計を「全体」とし、グループ`role`（`core`/`satellite`）のサテライト比率と、`share_review`（S&P500比率の維持判断ルール。基準は未設定=null）を表示する。NASDAQ100・SBI・Vの基準価額は`positions.items`の`hidden:true`で取得。はじめてのNISAは子供用の別枠のため統合ビューに含めない。`positions.items`の`hidden:true`は「基準価額の取得・保存のみ行い、カード/チャートタブ/LINEには出さない」（SBI・V・S&P500）。
+- **別枠積立（クレジットカード払いの毎月積立。オルカン30,000円=つみたて投資枠、Tracers20,000円=成長投資枠）は別会計**: 預り区分だけでは判別できないため取り込みは`sbi_import.side_fixed_amounts`（固定金額）で判定する。`purchase_history.json`の`account:"side"`で記録し、平均取得単価カード・チャートマーカー（攻撃フェーズ=`attack`、省略時）には含めない。合算は`portfolio.py`（統合ビュー）だけが行う。口座区分は`attack`（攻撃フェーズ）/`side`（別枠積立）/`legacy`（旧つみたてNISA。保持方針）。統合ビューは保有全ファンドの評価額合計を「全体」とし、グループ`role`（`core`/`satellite`）のサテライト比率と、`share_review`（S&P500比率の維持判断ルール。基準は未設定=null）を表示する。NASDAQ100・SBI・Vの基準価額は`positions.items`の`hidden:true`で取得。はじめてのNISAは子供用の別枠のため統合ビューに含めない。`positions.items`の`hidden:true`は「基準価額の取得・保存のみ行い、カード/チャートタブ/LINEには出さない」（SBI・V・S&P500）。
 - **公開リポジトリ**: SBI証券の約定履歴CSV等の個人の取引明細はコミットしない。
 - **スコープ外**: 自動発注、高度な予測AI、複数ユーザー対応・ログイン機能、SOXの出口判定（売却判定）の自動化は要件定義で明示的に対象外。
 

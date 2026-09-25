@@ -54,6 +54,7 @@ def generate(
     average_cost_html = _build_average_cost_section(settings, purchase_history or {}, navs, history)
     prices = _current_prices(settings, navs, history, positions_display or {})
     integrated_html = _build_integrated_section(build_integrated_view(settings, purchase_history or {}, prices))
+    ops_html = _build_monthly_ops_section(settings)
     usdjpy_rate = (market_display or {}).get("usdjpy", {}).get("value")
     positions_chart_data = _build_positions_chart_data(positions_history or [], settings, usdjpy_rate, purchase_history or {})
 
@@ -69,6 +70,7 @@ def generate(
         positions_html=positions_html,
         average_cost_html=average_cost_html,
         integrated_html=integrated_html,
+        ops_html=ops_html,
         chart_data_json=json.dumps(chart_data, ensure_ascii=False),
         positions_chart_data_json=json.dumps(positions_chart_data, ensure_ascii=False),
         settings=settings,
@@ -687,6 +689,86 @@ def _build_integrated_section(view: dict | None) -> str:
     )
 
 
+def _build_monthly_ops_section(settings: dict) -> str:
+    """
+    毎月の運用手順のサマリ（開閉式ガイド）のHTMLを生成する。
+    自動で行われること／毎月の作業／Tier到達時の対応／節目の判断を、手順どおりに並べる。
+    目標・基準の数値は settings.json（long_term_portfolio）から取得して表示する。
+    """
+    lt = settings.get("long_term_portfolio", {})
+    target = lt.get("satellite_target_percent", 20)
+    thr = (lt.get("share_review") or {}).get("threshold_percent")
+    thr_txt = f"{thr:g}%" if thr is not None else "未設定"
+
+    def schedule_line(key: str) -> str:
+        b = (settings.get("monthly_schedule") or {}).get(key)
+        if not b:
+            return ""
+        items = "／".join(
+            f'{i["fund"]} {i["amount"]:,}円' + (f'（{i["account_label"]}）' if i.get("account_label") else "")
+            for i in b.get("items", [])
+        )
+        total = sum(i["amount"] for i in b.get("items", []))
+        return (
+            f'<li><strong>{b["label"]}</strong>（{b.get("payment", "")}）: 毎月{b["order_day"]}日に発注、約定は{b.get("execution_day", b["order_day"])}日前後 → '
+            f'{items}（月 {total:,}円）</li>'
+        )
+
+    schedule_html = schedule_line("attack") + schedule_line("side")
+
+    return (
+        '<section class="guide-section">'
+        '<button class="guide-toggle" id="opsToggle">'
+        '<span>📅 毎月の運用手順（サマリ）</span>'
+        '<span class="toggle-icon" style="display:inline-block; transition:transform 0.2s;">▼</span>'
+        '</button>'
+        '<div class="guide-content" id="opsContent">'
+        '<div class="guide-grid" style="padding: 16px 0;">'
+
+        '<div class="guide-item">'
+        '<h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🤖 自動で行われること（何もしなくてよい）</h4>'
+        '<ul style="padding-left: 0;">'
+        '<li>平日の朝7時ごろ、基準価額の取得・下落率／Tier判定・ダッシュボード更新が自動で走ります。</li>'
+        '<li>平均取得単価・評価額・サテライト比率・S&amp;P500比率は、購入実績から自動で計算されます。</li>'
+        '<li>Tier到達時のアラートと、毎朝の日次サマリーはLINEに届きます。</li>'
+        '</ul>'
+        '<h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📅 毎月の作業（3ステップ）</h4>'
+        '<ul style="padding-left: 0;">'
+        '<li><strong>① 積立日</strong>（SBI証券の積立設定どおりに自動で約定。操作は不要です）</li>'
+        f'{schedule_html}'
+        '<li><strong>② 約定単価が確定したら</strong>（積立日の数日後）: SBI証券から<strong>約定履歴CSV</strong>をダウンロードし、'
+        '<code>python scripts/update_purchases.py 約定履歴.csv</code> を実行します。取り込み予定を確認（y）→ 書き込み → コミット・プッシュまで自動です。</li>'
+        '<li><strong>③ 翌営業日以降</strong>: ダッシュボードの反映を確認します。見る場所は「平均取得単価と含み損益」と、最下部の「長期ポートフォリオ」です。</li>'
+        '</ul>'
+        '</div>'
+
+        '<div class="guide-item">'
+        '<h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🚨 Tier到達のLINE通知が来たとき</h4>'
+        '<ul style="padding-left: 0;">'
+        '<li>ダッシュボードの判定（<span class="status-badge badge-buy">BUY</span> / <span class="status-badge badge-wait">WAIT</span>）と投入予定額を確認し、買うかどうかを判断します。</li>'
+        '<li>買う場合はSBI証券で<strong>手動発注</strong>します（自動発注はしません）。約定後は上の②と同じ手順でCSVを取り込みます。</li>'
+        '<li>Tier1〜3の約定は自動で判別できないため、グラフのマーカーをTier色にしたい場合だけ <code>data/purchase_history.json</code> の <code>category</code> を <code>Tier1</code> などに書き換えます（平均取得単価には影響しません）。</li>'
+        '<li>見送る場合は <code>data/triggered.json</code> の該当Tierを <code>"invested": false</code> にします（回復後に再到達すると再通知されます）。</li>'
+        '</ul>'
+        '<h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📊 毎月見る数字</h4>'
+        '<ul style="padding-left: 0;">'
+        f'<li><strong>サテライト比率</strong>: 目標 {target:g}%（現在値との差が表示されます）</li>'
+        f'<li><strong>S&amp;P500比率</strong>: 維持判断の基準 {thr_txt}（超えていると「見直し検討」と表示。表示のみで自動売却はしません）</li>'
+        '<li><strong>SOXの平均取得単価</strong>: 2028年月初の出口判定（上回れば売却、下回れば最大12ヶ月延長監視）に使います。</li>'
+        '</ul>'
+        '<h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">⚠️ 注意</h4>'
+        '<ul style="padding-left: 0;">'
+        '<li>約定履歴CSVは個人の取引明細のため、公開リポジトリに<strong>コミットしない</strong>でください。</li>'
+        '<li>土日は自動実行されません。反映が遅れているときは、GitHubの Actions タブで実行結果を確認します。</li>'
+        '</ul>'
+        '</div>'
+
+        '</div>'
+        '</div>'
+        '</section>'
+    )
+
+
 def _build_average_cost_section(settings: dict, purchase_history: dict, navs: dict, history: list[dict]) -> str:
     """
     銘柄ごとの平均取得単価と現在の基準価額を並べ、含み益/含み損を表示するカードのHTMLを生成する。
@@ -806,6 +888,7 @@ def _render_html(
     positions_html: str,
     average_cost_html: str,
     integrated_html: str,
+    ops_html: str,
     chart_data_json: str,
     positions_chart_data_json: str,
     settings: dict,
@@ -1147,6 +1230,9 @@ html, body{{ overflow-x: hidden; }}
     </div>
   </section>
 
+  <!-- ===== 毎月の運用手順（サマリ） ===== -->
+  {ops_html}
+
   <!-- ===== 総合サマリー ===== -->
   <section class="section-panel">
     <div class="section-title">投資意思決定サマリー</div>
@@ -1298,6 +1384,7 @@ function setupAccordion(toggleId, contentId) {{
 }}
 setupAccordion('guideToggle', 'guideContent');
 setupAccordion('marketGuideToggle', 'marketGuideContent');
+setupAccordion('opsToggle', 'opsContent');
 
 function purchaseMarkerColor(category) {{
   if (category === 'Tier1') return '#eab308';

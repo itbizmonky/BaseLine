@@ -112,7 +112,7 @@
       "category": "既存残高（旧つみたてNISA）",
       "amount": 1093338,
       "units": 627490,
-      "account": "side"
+      "account": "legacy"
     },
     {
       "date": "2026-07-10",
@@ -137,6 +137,39 @@
       "amount": 10000,
       "account": "side",
       "units": 2531
+    }
+  ],
+  "nasdaq100": [
+    {
+      "date": "2026-06-30",
+      "category": "既存残高",
+      "amount": 50001,
+      "units": 19951,
+      "account": "attack"
+    },
+    {
+      "date": "2026-07-10",
+      "price": 28744,
+      "category": "定期積立",
+      "amount": 10000,
+      "units": 3479,
+      "account": "attack"
+    },
+    {
+      "date": "2026-08-12",
+      "price": 28064,
+      "category": "定期積立",
+      "amount": 10000,
+      "units": 3564,
+      "account": "attack"
+    },
+    {
+      "date": "2026-09-10",
+      "price": 26985,
+      "category": "定期積立",
+      "amount": 10000,
+      "units": 3706,
+      "account": "attack"
     }
   ]
 }

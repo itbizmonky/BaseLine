@@ -12,7 +12,11 @@
       "short_name": "FANG+",
       "company": "大和アセットマネジメント",
       "fund_code": "04311181",
-      "tiers": [15, 25, 35],
+      "tiers": [
+        15,
+        25,
+        35
+      ],
       "color": "#f97316",
       "yahoo_code": "04311181",
       "active": false,
@@ -24,7 +28,11 @@
       "short_name": "SOX半導体",
       "company": "ニッセイアセットマネジメント",
       "fund_code": "29314233",
-      "tiers": [10, 18, 28],
+      "tiers": [
+        10,
+        18,
+        28
+      ],
       "color": "#a855f7",
       "yahoo_code": "29314233",
       "avg_cost_note": "2028年月初の出口判定に使用（平均取得単価を上回っていれば売却、下回っていれば最大12ヶ月延長監視）"
@@ -35,7 +43,11 @@
       "short_name": "S&P500",
       "company": "三菱UFJアセットマネジメント",
       "fund_code": "03311187",
-      "tiers": [7, 12, 18],
+      "tiers": [
+        7,
+        12,
+        18
+      ],
       "color": "#3b82f6",
       "yahoo_code": "03311187"
     },
@@ -45,7 +57,11 @@
       "short_name": "オルカン",
       "company": "三菱UFJアセットマネジメント",
       "fund_code": "0331418A",
-      "tiers": [6, 10, 15],
+      "tiers": [
+        6,
+        10,
+        15
+      ],
       "color": "#10b981",
       "yahoo_code": "0331418A"
     },
@@ -55,7 +71,11 @@
       "short_name": "Tracers",
       "company": "アモーヴァ・アセットマネジメント（旧：日興アセット）",
       "fund_code": "02312245",
-      "tiers": [12, 20, 28],
+      "tiers": [
+        12,
+        20,
+        28
+      ],
       "color": "#ec4899",
       "yahoo_code": "02312245"
     }
@@ -78,20 +98,52 @@
     "_comment": "②期間の原資金額設定（円）。tier_amountsは各Tierへの投入予定額",
     "total": 533049,
     "tier_amounts": {
-      "sox":     {"tier1": 33316, "tier2": 46642, "tier3": 53305},
-      "sp500":   {"tier1": 26652, "tier2": 37314, "tier3": 42644},
-      "orkan":   {"tier1": 23987, "tier2": 33582, "tier3": 38380},
-      "tracers": {"tier1": 49307, "tier2": 69029, "tier3": 78891}
+      "sox": {
+        "tier1": 33316,
+        "tier2": 46642,
+        "tier3": 53305
+      },
+      "sp500": {
+        "tier1": 26652,
+        "tier2": 37314,
+        "tier3": 42644
+      },
+      "orkan": {
+        "tier1": 23987,
+        "tier2": 33582,
+        "tier3": 38380
+      },
+      "tracers": {
+        "tier1": 49307,
+        "tier2": 69029,
+        "tier3": 78891
+      }
     }
   },
   "funds_phase3": {
     "_comment": "③期間の原資金額設定（円）。上記と同様に設定してください",
     "total": 533050,
     "tier_amounts": {
-      "sox":     {"tier1": 33316, "tier2": 46642, "tier3": 53305},
-      "sp500":   {"tier1": 26652, "tier2": 37314, "tier3": 42644},
-      "orkan":   {"tier1": 23987, "tier2": 33582, "tier3": 38380},
-      "tracers": {"tier1": 49307, "tier2": 69030, "tier3": 78891}
+      "sox": {
+        "tier1": 33316,
+        "tier2": 46642,
+        "tier3": 53305
+      },
+      "sp500": {
+        "tier1": 26652,
+        "tier2": 37314,
+        "tier3": 42644
+      },
+      "orkan": {
+        "tier1": 23987,
+        "tier2": 33582,
+        "tier3": 38380
+      },
+      "tracers": {
+        "tier1": 49307,
+        "tier2": 69030,
+        "tier3": 78891
+      }
     }
   },
   "baseline": {
@@ -150,7 +202,7 @@
         "ticker": "TSLA",
         "source": "yahoo_us_stock",
         "currency": "USD",
-        "cost_basis": 317.00,
+        "cost_basis": 317.0,
         "color": "#e11d48"
       },
       {
@@ -165,6 +217,19 @@
         "hidden": true,
         "hidden_note": "長期ポートフォリオの統合ビュー（S&P500合計評価額）用に基準価額のみ取得・保存する。保有ポジションのカード／チャートタブ／LINE日次サマリーには表示しない",
         "color": "#64748b"
+      },
+      {
+        "id": "nasdaq100",
+        "name": "ニッセイNASDAQ100インデックスファンド＜購入・換金手数料なし＞",
+        "short_name": "NASDAQ100",
+        "company": "ニッセイアセットマネジメント",
+        "fund_code": "29313233",
+        "source": "nikkei_fund",
+        "currency": "JPY",
+        "cost_basis": 0,
+        "hidden": true,
+        "hidden_note": "長期ポートフォリオの統合ビュー用に基準価額のみ取得・保存する。保有ポジションのカード／チャートタブ／LINE日次サマリーには表示しない",
+        "color": "#0ea5e9"
       }
     ],
     "gain_loss_thresholds": {
@@ -181,45 +246,124 @@
       "NISA (つみたて)": "side"
     },
     "fund_keywords": {
-      "orkan": ["eMAXIS Slim 全世界株式(オール・カントリー)"],
-      "sp500": ["eMAXIS Slim 米国株式(S&P500)"],
-      "sox": ["ニッセイSOX"],
-      "fang": ["iFreeNEXT FANG+"],
-      "tracers": ["Tracers S&P500トップ10"],
-      "sbi_v_sp500": ["SBI・V・S&P500"],
-      "newnisa_orkan": ["はじめてのNISA・全世界株式"]
+      "orkan": [
+        "eMAXIS Slim 全世界株式(オール・カントリー)"
+      ],
+      "sp500": [
+        "eMAXIS Slim 米国株式(S&P500)"
+      ],
+      "sox": [
+        "ニッセイSOX"
+      ],
+      "fang": [
+        "iFreeNEXT FANG+"
+      ],
+      "tracers": [
+        "Tracers S&P500トップ10"
+      ],
+      "sbi_v_sp500": [
+        "SBI・V・S&P500"
+      ],
+      "newnisa_orkan": [
+        "はじめてのNISA・全世界株式"
+      ],
+      "nasdaq100": [
+        "ニッセイNASDAQ100"
+      ]
     }
   },
   "long_term_portfolio": {
-    "_comment": "長期ポートフォリオ（攻撃フェーズ＋別枠積立）の統合ビュー。表示専用でTier判定・LINE通知には使わない。holdingsのfund_idはpurchase_history.jsonのキー、accountはattack（攻撃フェーズ=成長投資枠）／side（別枠積立=つみたて投資枠）。評価額=保有口数×現在の基準価額。サテライト比率=roleがsatelliteのグループ合計÷全グループ合計。2028年月初にオルカン80%／Tracers20%へ一括リバランスする判断に使う（判定・売却の自動化はしない）",
+    "_comment": "長期ポートフォリオの統合ビュー。保有している全ファンド（攻撃フェーズ＋別枠積立＋旧つみたてNISA）の評価額を合算した「全体」に対する割合を表示する（表示専用でTier判定・LINE通知には使わない）。holdingsのfund_idはpurchase_history.jsonのキー、accountはattack（攻撃フェーズ=成長投資枠）／side（別枠積立=つみたて投資枠）／legacy（旧つみたてNISA。できる限り保持する）。評価額=保有口数×現在の基準価額。roleはcore/satellite。サテライト比率=satelliteグループの合計÷全体（全グループの合計）。グループの割合（例: S&P500比率）も同じく÷全体。2028年月初のリバランス判断に使う（判定・売却の自動化はしない）。はじめてのNISA（子供用の別枠）・テスラは含めない",
     "enabled": true,
     "satellite_target_percent": 20,
+    "share_review": {
+      "_comment": "維持判断ルール（比率ベース）。group_idのグループが全体に占める割合がthreshold_percentを超えたら「見直し検討」と表示する（表示のみ・自動売却なし）。threshold_percentは投資判断のためユーザーが決める数値で、未設定（null）の間は「基準の数値が未設定」と表示する。現在の50%は暫定値（S&P500の割合が高い現状から、サテライト・オルカンが今後増えていく割合の目安）",
+      "enabled": true,
+      "group_id": "sp500",
+      "threshold_percent": 50,
+      "note": "基準50%は暫定値（S&P500の割合が高い現状から、サテライト・オルカンが今後増える割合の目安）。旧つみたてNISA分は非課税枠が復活しないため、できる限り保持する方針"
+    },
     "groups": [
+      {
+        "id": "sox",
+        "label": "SOX",
+        "role": "satellite",
+        "holdings": [
+          {
+            "fund_id": "sox",
+            "account": "attack"
+          }
+        ]
+      },
+      {
+        "id": "fang",
+        "label": "FANG+",
+        "role": "satellite",
+        "holdings": [
+          {
+            "fund_id": "fang",
+            "account": "attack"
+          }
+        ]
+      },
+      {
+        "id": "tracers",
+        "label": "Tracers（Top10）",
+        "role": "satellite",
+        "holdings": [
+          {
+            "fund_id": "tracers",
+            "account": "attack"
+          },
+          {
+            "fund_id": "tracers",
+            "account": "side"
+          }
+        ]
+      },
+      {
+        "id": "nasdaq100",
+        "label": "NASDAQ100",
+        "role": "satellite",
+        "holdings": [
+          {
+            "fund_id": "nasdaq100",
+            "account": "attack"
+          }
+        ]
+      },
       {
         "id": "orkan",
         "label": "オルカン",
         "role": "core",
         "holdings": [
-          {"fund_id": "orkan", "account": "attack"},
-          {"fund_id": "orkan", "account": "side"}
-        ]
-      },
-      {
-        "id": "tracers",
-        "label": "Tracers",
-        "role": "satellite",
-        "holdings": [
-          {"fund_id": "tracers", "account": "attack"},
-          {"fund_id": "tracers", "account": "side"}
+          {
+            "fund_id": "orkan",
+            "account": "attack"
+          },
+          {
+            "fund_id": "orkan",
+            "account": "side"
+          }
         ]
       },
       {
         "id": "sp500",
         "label": "S&P500",
-        "role": "satellite",
+        "role": "core",
         "holdings": [
-          {"fund_id": "sp500", "account": "attack"},
-          {"fund_id": "sbi_v_sp500", "account": "side"}
+          {
+            "fund_id": "sp500",
+            "account": "attack"
+          },
+          {
+            "fund_id": "sbi_v_sp500",
+            "account": "side"
+          },
+          {
+            "fund_id": "sbi_v_sp500",
+            "account": "legacy"
+          }
         ]
       }
     ]

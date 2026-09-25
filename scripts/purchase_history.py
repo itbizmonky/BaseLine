@@ -47,6 +47,7 @@ def load_purchase_history() -> dict:
 
 ACCOUNT_ATTACK = "attack"  # 攻撃フェーズ（成長投資枠での買付）
 ACCOUNT_SIDE = "side"      # 別枠積立（つみたて投資枠での毎月積立）
+ACCOUNT_LEGACY = "legacy"  # 旧つみたてNISA（新規買付不可。できる限り保持する方針の口座）
 
 
 def record_account(r: dict) -> str:

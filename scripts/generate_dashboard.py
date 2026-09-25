@@ -267,17 +267,17 @@ def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
 
         rows.append(
             f'<tr>'
-            f'  <td>'
+            f'  <td data-label="監視銘柄">'
             f'    <div style="display:flex;align-items:center;gap:8px;">'
             f'      <span class="fund-dot" style="background-color:{color};box-shadow:0 0 6px {color}"></span>'
             f'      <span style="font-weight:600;">{r["short_name"]}</span>'
             f'{INACTIVE_TAG if r["fund_id"] in inactive_ids else ""}'
             f'    </div>'
             f'  </td>'
-            f'  <td><span class="val-drawdown">{format_drawdown(r["drawdown"])}</span></td>'
-            f'  <td>{format_baseline_ratio(r.get("baseline_ratio"))}</td>'
-            f'  <td><span class="val-tier">{tier_str}</span></td>'
-            f'  <td><span class="status-badge {dec_class}">{dec_emoji} {dec_label}</span></td>'
+            f'  <td data-label="最高値比 (下落率)"><span class="val-drawdown">{format_drawdown(r["drawdown"])}</span></td>'
+            f'  <td data-label="基準日比 (上昇率)">{format_baseline_ratio(r.get("baseline_ratio"))}</td>'
+            f'  <td data-label="到達段階"><span class="val-tier">{tier_str}</span></td>'
+            f'  <td data-label="システム判定"><span class="status-badge {dec_class}">{dec_emoji} {dec_label}</span></td>'
             f'</tr>'
         )
     return "\n".join(rows)
@@ -538,100 +538,151 @@ def _yen(v: float | None) -> str:
     return f"{v:,.0f}円" if v is not None else "算出不可"
 
 
+_ACCOUNT_LABELS = {"attack": "攻撃フェーズ", "side": "別枠積立", "legacy": "旧つみたてNISA（保持）"}
+_ACCOUNT_SHORT = {"attack": "攻撃", "side": "別枠", "legacy": "旧つみたて"}
+_ROLE_LABELS = {"core": "コア", "satellite": "サテライト"}
+
+
+def _ratio_block(title: str, value_html: str, badge: str, formula: str, amounts: str, bar: str, note: str = "") -> str:
+    """比率1つ分のブロック（見出し・大きな数値・バッジ・計算式・バー・補足）のHTMLを返す。"""
+    return (
+        '<div class="sat-hero" style="margin-top:12px;">'
+        f'<div class="sat-hero__label">{title}</div>'
+        f'<div class="sat-hero__row">{value_html}{badge}</div>'
+        f'<div class="market-card__note">計算式: {formula}</div>'
+        f'<div class="market-card__note">{amounts}</div>'
+        f'{bar}{note}'
+        '</div>'
+    )
+
+
+def _bar(share: float, marker: float | None, marker_label: str) -> str:
+    """割合バー（塗り＝現在値、黄色の線＝目標または基準）。"""
+    fill = max(0.0, min(share, 100.0))
+    mk = ""
+    if marker is not None:
+        m = max(0.0, min(marker, 100.0))
+        mk = (
+            f'<div class="sat-bar__target" style="left:{m:.1f}%"></div>'
+            f'<div class="sat-bar__target-label" style="left:{m:.1f}%">{marker_label}</div>'
+        )
+    return f'<div class="sat-bar"><div class="sat-bar__fill" style="width:{fill:.1f}%"></div>{mk}</div>'
+
+
 def _build_integrated_section(view: dict | None) -> str:
     """
-    長期ポートフォリオ（攻撃フェーズ＋別枠積立）の統合ビューのセクションHTMLを生成する。
-    サテライト比率と目標との対比、銘柄グループ別の口座別評価額・合計評価額を表示する（表示専用）。
+    長期ポートフォリオ（保有している全ファンドの合算）の統合ビューのセクションHTMLを生成する。
+    「全体」に対するサテライト比率（目標との対比）と、維持判断ルール（比率ベース）の状況、
+    グループ別の評価額・全体に占める割合・口座別内訳を表示する（表示専用）。
     view が None（未設定・無効）の場合は空文字を返す。
     """
     if view is None:
         return ""
 
-    ratio = view["satellite_ratio"]
-    target = view["target_percent"]
-    provisional = (
-        f'<p class="pf-warn">⚠ {view["provisional"]}</p>' if view.get("provisional") else ""
-    )
+    groups = view["groups"]
+    total = view["total_value"]
+    provisional = f'<p class="pf-warn">⚠ {view["provisional"]}</p>' if view.get("provisional") else ""
+    all_names = "、".join(n for g in groups for n in g["fund_names"])
 
+    # ---- サテライト比率
+    ratio, target = view["satellite_ratio"], view["target_percent"]
+    sat_formula = "（" + "＋".join(view["satellite_names"]) + "）÷ 全体"
     if ratio is None:
-        hero = (
-            '<div class="sat-hero"><div class="sat-hero__label">サテライト比率</div>'
-            '<div class="sat-hero__value" style="font-size:20px;">算出不可</div>'
-            '<div class="market-card__note">現在の基準価額を取得できない銘柄があるため算出できません（次回の実行で再計算されます）。</div></div>'
+        sat_block = _ratio_block(
+            "サテライト比率", '<span class="sat-hero__value" style="font-size:20px;">算出不可</span>', "",
+            sat_formula, "現在の基準価額を取得できない銘柄があるため算出できません（次回の実行で再計算されます）。", "",
         )
     else:
         diff = view["diff_pt"]
-        over = diff > 0
-        state_css = "pos-warning" if over else "pos-good"
-        state_txt = f"目標より {abs(diff):.1f}pt 高い" if over else f"目標より {abs(diff):.1f}pt 低い"
-        adj = view["adjustment_amount"]
-        adj_txt = (
-            f"参考: 目標比率に戻すには、サテライトを約{abs(adj):,.0f}円分 コア（オルカン）へ移す規模です"
-            if adj > 0 else
-            f"参考: 目標比率まであと、サテライトが約{abs(adj):,.0f}円分 不足しています"
+        badge = (
+            f'<span class="status-badge {"pos-warning" if diff > 0 else "pos-good"}">'
+            f'目標より {abs(diff):.1f}pt {"高い" if diff > 0 else "低い"}</span>'
         )
-        fill = max(0.0, min(ratio, 100.0))
-        hero = (
-            '<div class="sat-hero">'
-            f'<div class="sat-hero__label">サテライト比率（目標 {target:.0f}%）</div>'
-            f'<div class="sat-hero__row"><span class="sat-hero__value">{ratio:.1f}%</span>'
-            f'<span class="status-badge {state_css}">{state_txt}</span></div>'
-            '<div class="sat-bar">'
-            f'<div class="sat-bar__fill" style="width:{fill:.1f}%"></div>'
-            f'<div class="sat-bar__target" style="left:{target:.1f}%"></div>'
-            f'<div class="sat-bar__target-label" style="left:{target:.1f}%">目標{target:.0f}%</div>'
-            '</div>'
-            f'<div class="market-card__note">{adj_txt}（参考値。リバランスの判断は手動）</div>'
-            '</div>'
+        sat_block = _ratio_block(
+            f"サテライト比率（目標 {target:.0f}%）",
+            f'<span class="sat-hero__value">{ratio:.1f}%</span>', badge, sat_formula,
+            f"{_yen(view['satellite_value'])} ÷ {_yen(total)}",
+            _bar(ratio, target, f"目標{target:.0f}%"),
         )
 
-    total = view["total_value"]
-    rows = []
-    for g in view["groups"]:
-        by_account = {"attack": 0.0, "side": 0.0}
-        missing = {"attack": False, "side": False}
+    # ---- 維持判断ルール（比率ベース。例: S&P500比率）
+    review_block = ""
+    hr = view.get("share_review")
+    if hr:
+        share, thr, status = hr["share"], hr["threshold_percent"], hr["status"]
+        formula = "（" + "＋".join(hr["fund_names"]) + "）÷ 全体"
+        if status is None:
+            review_block = _ratio_block(
+                f'{hr["label"]}比率', '<span class="sat-hero__value" style="font-size:20px;">算出不可</span>', "",
+                formula, "現在の基準価額を取得できない銘柄があるため算出できません。", "",
+            )
+        else:
+            css, txt = {
+                "keep": ("pos-good", "維持（基準内）"),
+                "review": ("pos-warning", "見直し検討"),
+                "unset": ("pos-neutral", "基準の数値が未設定"),
+            }[status]
+            rule = (
+                f"基準: {hr['label']}比率が{thr:g}%を超えたら見直しを検討する"
+                if thr is not None else
+                f"基準: {hr['label']}比率が○%を超えたら見直しを検討する（○はユーザーが決めた数値を config/settings.json の long_term_portfolio.share_review.threshold_percent に設定）"
+            )
+            note = f"<br>{hr['note']}" if hr.get("note") else ""
+            review_block = _ratio_block(
+                f'{hr["label"]}比率（維持判断ルール）',
+                f'<span class="sat-hero__value">{share:.1f}%</span>',
+                f'<span class="status-badge {css}">{txt}</span>', formula,
+                f"{_yen(hr['value'])} ÷ {_yen(total)}",
+                _bar(share, thr, f"基準{thr:g}%" if thr is not None else ""),
+                f'<div class="market-card__note">{rule}（表示のみ。自動売却はしません）{note}</div>',
+            )
+
+    # ---- グループ別カード
+    cards = []
+    for g in groups:
+        accounts = []
+        for h in g["holdings"]:
+            if h["account"] not in accounts:
+                accounts.append(h["account"])
+        by_account = {a: 0.0 for a in accounts}
+        missing = {a: False for a in accounts}
         for h in g["holdings"]:
             if h["value"] is None:
                 missing[h["account"]] = True
             else:
                 by_account[h["account"]] += h["value"]
-        cells = []
-        for acct in ("attack", "side"):
-            cells.append(f"<td>{'算出不可' if missing[acct] else _yen(by_account[acct])}</td>")
-        share = (g["total_value"] / total * 100) if (g["total_value"] is not None and total) else None
-        share_txt = f"{share:.1f}%" if share is not None else "-"
-        role_txt = "サテライト" if g["role"] == "satellite" else "コア"
-        costs = []
-        for h in g["holdings"]:
-            if h["avg_cost"] is not None:
-                acct = "攻撃" if h["account"] == "attack" else "別枠"
-                costs.append(f"{acct} {h['avg_cost']:,.0f}円")
+        share_txt = f"全体の{g['share']:.1f}%" if g["share"] is not None else "全体比 -"
+        costs = [
+            f"{_ACCOUNT_SHORT.get(h['account'], h['account'])} {h['avg_cost']:,.0f}円"
+            for h in g["holdings"] if h["avg_cost"] is not None
+        ]
         cost_txt = "／".join(costs) if costs else "データなし"
-        rows.append(
-            "<tr>"
-            f"<td><strong>{g['label']}</strong><div class=\"market-card__note\">{role_txt}</div></td>"
-            + cells[0] + cells[1]
-            + f"<td><strong>{_yen(g['total_value'])}</strong></td>"
-            f"<td>{share_txt}</td>"
-            f"<td style=\"font-size:11px;\">{cost_txt}</td>"
-            "</tr>"
+        lines = "".join(
+            f'<div class="pf-line"><span>{_ACCOUNT_LABELS.get(a, a)}</span>'
+            f'<span>{"算出不可" if missing[a] else _yen(by_account[a])}</span></div>'
+            for a in accounts
+            if len(accounts) > 1 or a != "attack"
         )
-    total_row = (
-        f'<tr><td><strong>合計</strong></td><td></td><td></td><td><strong>{_yen(total)}</strong></td><td>100%</td><td></td></tr>'
-        if total is not None else ""
-    )
+        cards.append(
+            '<div class="market-card">'
+            f'<div class="market-card__label">{g["label"]}<span class="inactive-tag">{_ROLE_LABELS.get(g["role"], g["role"])}</span></div>'
+            f'<div class="market-card__value" style="font-size:20px;">{_yen(g["total_value"])}</div>'
+            f'<div class="market-card__note">{share_txt}</div>'
+            f'{lines}'
+            f'<div class="pf-line"><span>平均取得単価</span><span>{cost_txt}</span></div>'
+            '</div>'
+        )
 
     return (
         '<section class="section-panel">'
-        '<div class="section-title">🏦 長期ポートフォリオ（攻撃フェーズ＋別枠積立）</div>'
-        '<p class="market-disclaimer">2028年月初のリバランス判断用に、同じファンドの攻撃フェーズ分（成長投資枠）と別枠積立分（つみたて投資枠）を合算した評価額です。'
-        '参考情報であり、BUY/WAITの判定・LINE通知には使用しません。サテライト比率＝（Tracers＋S&P500）÷（オルカン＋Tracers＋S&P500）。</p>'
-        f'{provisional}{hero}'
-        '<div class="table-wrapper" style="margin-top:16px;"><table class="funds-table">'
-        '<thead><tr><th>銘柄</th><th>攻撃フェーズ</th><th>別枠積立</th><th>合計評価額</th><th>構成比</th><th>平均取得単価</th></tr></thead>'
-        f'<tbody>{"".join(rows)}{total_row}</tbody></table></div>'
-        '<p class="market-disclaimer" style="margin-top:10px;">評価額＝保有口数×現在の基準価額（既存残高を含む）。S&P500の別枠積立分はSBI・V・S&P500の基準価額で評価。'
-        'SOX・FANG+・はじめてのNISA・テスラは含みません。</p>'
+        '<div class="section-title">🏦 長期ポートフォリオ（保有ファンドの合算）</div>'
+        '<p class="market-disclaimer">2028年月初のリバランス判断用に、保有している全ファンド（攻撃フェーズ・別枠積立・旧つみたてNISA）の評価額を合算した「全体」に対する割合を表示します。'
+        '参考情報であり、BUY/WAITの判定・LINE通知には使用しません。</p>'
+        f'<p class="market-disclaimer"><strong>全体</strong> ＝ {all_names} の評価額の合計 ＝ <strong>{_yen(total)}</strong></p>'
+        f'{provisional}{sat_block}{review_block}'
+        f'<div class="market-grid" style="margin-top:16px;">{"".join(cards)}</div>'
+        '<p class="market-disclaimer" style="margin-top:10px;">評価額＝保有口数×現在の基準価額（既存残高を含む）。S&P500の別枠積立・旧つみたてNISA分はSBI・V・S&P500の基準価額で評価。'
+        'はじめてのNISA（子供用の別枠）・テスラは含みません。</p>'
         '</section>'
     )
 
@@ -965,7 +1016,7 @@ body{{
 .tier-bar__val{{ font-family: 'Inter', monospace; font-weight: 700; }}
 
 /* ===== Trend & Chart Panels ===== */
-.chart-tabs{{ display: flex; gap: 8px; margin-bottom: 16px; }}
+.chart-tabs{{ display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }}
 .chart-tab{{
   padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.02);
   background: var(--panel-bg); box-shadow: var(--shadow-out); color: var(--text-mute);
@@ -1010,15 +1061,41 @@ body{{
 /* ===== Footer ===== */
 .footer{{ text-align: center; padding: 30px; font-size: 11px; color: var(--text-mute); border-top: 1px solid rgba(255, 255, 255, 0.02); margin-top: 40px; }}
 
+html, body{{ overflow-x: hidden; }}
+.pf-line{{ display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12px; padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.04); }}
+.pf-line span:first-child{{ color: var(--text-mute); white-space: nowrap; }}
+.pf-line span:last-child{{ text-align: right; font-family: 'Inter', monospace; }}
 @media(max-width: 768px){{
+  .main{{ padding: 14px 10px; gap: 16px; }}
+  .section-panel{{ padding: 16px 14px; }}
+  .fund-card{{ padding: 16px 14px; }}
+  .guide-toggle{{ padding: 14px 16px; }}
   .fund-card__metrics{{ grid-template-columns: 1fr 1fr; }}
   .trend-grid{{ grid-template-columns: 1fr 1fr; }}
   .guide-grid{{ grid-template-columns: 1fr; }}
   .market-grid{{ grid-template-columns: 1fr; }}
 }}
+@media(max-width: 600px){{
+  /* 投資意思決定サマリー: 横スクロールを避けるため、1銘柄1カードの縦積みにする */
+  .table-wrapper{{ padding: 4px; overflow-x: visible; }}
+  .summary-table{{ min-width: 0; }}
+  .summary-table thead{{ display: none; }}
+  .summary-table, .summary-table tbody, .summary-table tr, .summary-table td{{ display: block; width: 100%; }}
+  .summary-table tr{{ padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.05); }}
+  .summary-table tr:last-child{{ border-bottom: none; }}
+  .summary-table td{{ display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 6px; border: none; font-size: 13px; }}
+  .summary-table td::before{{ content: attr(data-label); color: var(--text-mute); font-size: 11px; white-space: nowrap; }}
+  .summary-table td:first-child{{ font-size: 14px; padding-bottom: 6px; }}
+  .summary-table td:first-child::before{{ content: none; }}
+  .funds-table th, .funds-table td{{ padding: 10px 4px; font-size: 12px; }}
+}}
 @media(max-width: 480px){{
   .header-inner{{ flex-direction: column; gap: 8px; text-align: center; }}
   .header-sub{{ text-align: center; }}
+  .header{{ padding: 12px 14px; }}
+  .sat-hero__value{{ font-size: 28px; }}
+  .market-card__value{{ font-size: 20px; }}
+  .chart-wrapper{{ height: 240px; padding: 8px; }}
   .summary-table th, .summary-table td{{ padding: 10px 6px; font-size: 11px; }}
   .tier-progress{{ flex-direction: column; gap: 6px; }}
   .metric-value{{ font-size: 14px; }}
@@ -1090,9 +1167,6 @@ body{{
       </table>
     </div>
   </section>
-
-  <!-- ===== 長期ポートフォリオ（統合ビュー） ===== -->
-  {integrated_html}
 
   <!-- ===== 平均取得単価と含み損益 ===== -->
   <section class="section-panel">
@@ -1191,6 +1265,9 @@ body{{
       <canvas id="positionsChart"></canvas>
     </div>
   </section>
+
+  <!-- ===== 長期ポートフォリオ（統合ビュー。最下部） ===== -->
+  {integrated_html}
 
 </main>
 

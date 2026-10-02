@@ -31,6 +31,14 @@
       "price": 43629,
       "category": "定期積立",
       "amount": 14706
+    },
+    {
+      "date": "2026-09-25",
+      "price": 47589,
+      "category": "定期積立",
+      "amount": 14706,
+      "account": "attack",
+      "units": 3091
     }
   ],
   "sp500": [
@@ -45,6 +53,14 @@
       "price": 44836,
       "category": "定期積立",
       "amount": 24706
+    },
+    {
+      "date": "2026-09-25",
+      "price": 45049,
+      "category": "定期積立",
+      "amount": 11765,
+      "account": "attack",
+      "units": 2612
     }
   ],
   "orkan": [
@@ -82,9 +98,26 @@
       "amount": 10000,
       "account": "side",
       "units": 2690
+    },
+    {
+      "date": "2026-09-25",
+      "price": 38325,
+      "category": "定期積立",
+      "amount": 10588,
+      "account": "attack",
+      "units": 2763
     }
   ],
-  "tracers": [],
+  "tracers": [
+    {
+      "date": "2026-09-25",
+      "price": 16941,
+      "category": "定期積立",
+      "amount": 21765,
+      "account": "attack",
+      "units": 12848
+    }
+  ],
   "newnisa_orkan": [
     {
       "date": "2026-08-06",

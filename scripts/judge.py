@@ -629,8 +629,9 @@ if __name__ == "__main__":
         if nav is None or peak_val is None:
             continue
         dd = calc_drawdown(nav, peak_val)
-        tier = judge_tier(dd, fund["tiers"])
-        print(f"  {fund['short_name']:10s}: 下落率={dd:.2f}% → Tier{tier} (閾値: {fund['tiers']}%)")
+        tiers = fund.get("tiers") or []
+        tier = judge_tier(dd, tiers)
+        print(f"  {fund['short_name']:10s}: 下落率={dd:.2f}% → Tier{tier} (閾値: {tiers}%)")
 
     print("\n=== 期間判定テスト ===")
     today = date(2026, 10, 15)

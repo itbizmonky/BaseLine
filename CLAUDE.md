@@ -4,7 +4,7 @@
 
 ## プロジェクト概要
 
-**BaseLine** は、新NISA「攻撃フェーズ」で保有する投資信託（現在はTracers/SOX/S&P500/オルカンの4銘柄がTier通知対象。FANG+は新規購入停止で表示のみ）について、あらかじめ決めた「暴落対応ルール（階層型Tierトリガー）」を毎朝自動で監視し、Tier到達時にLINEへ通知する個人用ツールです。
+**BaseLine** は、新NISA「攻撃フェーズ」で保有する投資信託（現在はTracers/SOX/S&P500/オルカンの4銘柄がTier通知対象。FANG+・NASDAQ100は新規購入停止で表示のみ）について、あらかじめ決めた「暴落対応ルール（階層型Tierトリガー）」を毎朝自動で監視し、Tier到達時にLINEへ通知する個人用ツールです。
 
 - **背景・目的**: 従来は人手で毎日基準価額を確認し下落率を計算していたが、見逃しリスクと運用負荷をゼロにするため自動化した。詳細な要件は [暴落監視ダッシュボード_要件定義書.md](暴落監視ダッシュボード_要件定義書.md) を参照。
 - **開発の経緯**: 元々 Google AntiGravity で構築されたプロジェクトを、本セッションから Claude Code に開発移管した。
@@ -16,6 +16,7 @@
 |---|---|---|---|---|
 | `tracers` | Tracers S&P500トップ10インデックス（米国株式） | -12% | -20% | -28% |
 | `fang` | iFreeNEXT FANG+インデックス（**2026-09以降 新規購入停止**。`active:false`でTier通知・LINE日次サマリー対象外、表示のみ継続） | -15% | -25% | -35% |
+| `nasdaq100` | ニッセイNASDAQ100インデックスファンド（**積立停止中**。`active:false`・`tiers`なし。表示のみ） | - | - | - |
 | `sox` | ニッセイSOX指数インデックスファンド | -10% | -18% | -28% |
 | `sp500` | eMAXIS Slim米国株式（S&P500） | -7% | -12% | -18% |
 | `orkan` | eMAXIS Slim全世界株式（オール・カントリー） | -6% | -10% | -15% |
@@ -32,7 +33,7 @@
 3. 取得失敗銘柄があれば `notify_fetch_error()` でLINE通知（F-11。`active:false`の銘柄は対象外）
 4. `judge.py`: `data/peak.json`（設定来高値）を更新、下落率・Tier・基準日比・購入判定（BUY/WAIT/HOLD/HIGH）を計算
 5. 新規Tier到達（`data/triggered.json` に未記録のTier）があれば `notify_tier_reached()` でLINE通知（重複通知防止のため一度発動したTierは再通知しない）。`active:false`（新規購入停止）の銘柄は通知・記録・回復判定を行わない（判定は`INACTIVE`）
-6. 通知対象銘柄（`active:false`を除く）と保有ポジションの日次サマリーを `notify_daily_summary()` でLINE通知
+6. 全銘柄と保有ポジションの日次サマリーを `notify_daily_summary()` でLINE通知（`active:false`の銘柄は「新規購入停止・表示のみ」として最高値比と平均取得単価比（`fund_results[].avg_cost_ratio`）だけを表示。表示順は`funds`の並び順）
 7. `data/history.csv`（新銘柄の列は自動追加）/ `data/peak.json` / `data/triggered.json` を保存（`market.json`・`positions.json`・`positions_history.csv`はそれぞれの取得ステップで保存）
 8. `generate_dashboard.py`: `public/index.html` を生成（Chart.jsはCDN読み込み）。購入実績（`purchase_history.json`）から平均取得単価・グラフマーカーも描画
 9. GitHub Actions が `history.csv`/`peak.json`/`triggered.json`/`market.json`/`positions.json`/`positions_history.csv` と `public/index.html`、更新された `monitor.yml` をコミット・プッシュし、GitHub Pages にデプロイ（`purchase_history.json`は運用者が手動コミットするため対象外）
@@ -94,9 +95,9 @@ GitHub Actions 上では `workflow_dispatch` から `dry_run: true` で手動テ
 - **cronの自動同期**: `monitor.yml` の cron 式を直接編集しても、次回 `monitor.py` 実行時に `settings.json` の `schedule` の値で上書きされる。スケジュール変更は `settings.json` 側で行うこと。
 - **triggered.json は重複通知防止のための唯一のstate**。誤って削除するとTier到達通知が再送されるため、消す場合は影響を理解した上で行う。
 - **public/index.html は生成物**。手動編集しても次回実行で上書きされる。テンプレート変更は `generate_dashboard.py` を編集する。
-- **銘柄の追加・停止は設定のみで行う**: `settings.json`の`funds`に追加、新規購入停止は`"active": false`。`history.csv`は列が自動で増える。銘柄IDをコードに固定しない（`.get(fund_id, [])`で未登録を空扱いする）。
+- **銘柄の追加・停止は設定のみで行う**: `settings.json`の`funds`に追加、新規購入停止は`"active": false`（`tiers`は省略可。Tier判定・Tier表示・Tier閾値線は出ない）。表示順（ダッシュボードの表・カード・タブ・LINE）は`funds`の並び順。FANG+・NASDAQ100がこれに当たる（NASDAQ100は積立設定が見当たらず最後の約定が2026-09-10のため停止扱い）。`history.csv`は列が自動で増える。銘柄IDをコードに固定しない（`.get(fund_id, [])`で未登録を空扱いする）。
 - **`--dry-run`は通知送信コードパスを通らない**（8/10-11の本番クラッシュの教訓、要件定義書 残課題No.7）。通知関連の変更は`_send_line_message`をモックして`notify_*`を実際に呼んで確認すること。また`--dry-run`もデータファイル（`data/*`）を書き換えるため、テスト後は`git checkout`で戻す（本番の記録はGitHub Actionsに一本化）。
-- **別枠積立（クレジットカード払いの毎月積立。オルカン30,000円=つみたて投資枠、Tracers20,000円=成長投資枠）は別会計**: 預り区分だけでは判別できないため取り込みは`sbi_import.side_fixed_amounts`（固定金額）で判定する。`purchase_history.json`の`account:"side"`で記録し、平均取得単価カード・チャートマーカー（攻撃フェーズ=`attack`、省略時）には含めない。合算は`portfolio.py`（統合ビュー）だけが行う。口座区分は`attack`（攻撃フェーズ）/`side`（別枠積立）/`legacy`（旧つみたてNISA。保持方針）。統合ビューは保有全ファンドの評価額合計を「全体」とし、グループ`role`（`core`/`satellite`）のサテライト比率と、`share_review`（S&P500比率の維持判断ルール。基準は未設定=null）を表示する。NASDAQ100・SBI・Vの基準価額は`positions.items`の`hidden:true`で取得。はじめてのNISAは子供用の別枠のため統合ビューに含めない。`positions.items`の`hidden:true`は「基準価額の取得・保存のみ行い、カード/チャートタブ/LINEには出さない」（SBI・V・S&P500）。
+- **別枠積立（クレジットカード払いの毎月積立。オルカン30,000円=つみたて投資枠、Tracers20,000円=成長投資枠）は別会計**: 預り区分だけでは判別できないため取り込みは`sbi_import.side_fixed_amounts`（固定金額）で判定する。`purchase_history.json`の`account:"side"`で記録し、平均取得単価カード・チャートマーカー（攻撃フェーズ=`attack`、省略時）には含めない。合算は`portfolio.py`（統合ビュー）だけが行う。口座区分は`attack`（攻撃フェーズ）/`side`（別枠積立）/`legacy`（旧つみたてNISA。保持方針）。統合ビューは保有全ファンドの評価額合計を「全体」とし、グループ`role`（`core`/`satellite`）のサテライト比率と、`share_review`（S&P500比率の維持判断ルール。基準は未設定=null）を表示する。SBI・Vの基準価額は`positions.items`の`hidden:true`で取得（NASDAQ100は`funds`の停止銘柄として取得）。はじめてのNISAは子供用の別枠のため統合ビューに含めない。`positions.items`の`hidden:true`は「基準価額の取得・保存のみ行い、カード/チャートタブ/LINEには出さない」（SBI・V・S&P500）。
 - **公開リポジトリ**: SBI証券の約定履歴CSV等の個人の取引明細はコミットしない。
 - **スコープ外**: 自動発注、高度な予測AI、複数ユーザー対応・ログイン機能、SOXの出口判定（売却判定）の自動化は要件定義で明示的に対象外。
 

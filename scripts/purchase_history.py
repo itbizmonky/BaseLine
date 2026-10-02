@@ -116,6 +116,17 @@ def calc_average_cost(records: list[dict]) -> dict | None:
     }
 
 
+def calc_gain_vs_average(records: list[dict], nav: float | None) -> float | None:
+    """
+    現在の基準価額の、平均取得単価に対する損益率（%）を返す。実績がない／基準価額が不明なら None。
+    records には攻撃フェーズ分（account=attack）など、対象の口座の実績だけを渡す。
+    """
+    avg = calc_average_cost(records)
+    if avg is None or nav is None:
+        return None
+    return (nav - avg["avg_cost"]) / avg["avg_cost"] * 100
+
+
 def resolve_cost_basis(fallback: float, records: list[dict]) -> float:
     """
     保有ポジションの取得単価を決定する。約定実績（purchase_history.json）に計算可能な実績が

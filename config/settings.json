@@ -7,20 +7,18 @@
   },
   "funds": [
     {
-      "id": "fang",
-      "name": "iFreeNEXT FANG+インデックス",
-      "short_name": "FANG+",
-      "company": "大和アセットマネジメント",
-      "fund_code": "04311181",
+      "id": "tracers",
+      "name": "Tracers S&P500トップ10インデックス（米国株式）",
+      "short_name": "Tracers",
+      "company": "アモーヴァ・アセットマネジメント（旧：日興アセット）",
+      "fund_code": "02312245",
       "tiers": [
-        15,
-        25,
-        35
+        12,
+        20,
+        28
       ],
-      "color": "#f97316",
-      "yahoo_code": "04311181",
-      "active": false,
-      "inactive_note": "2026-09以降新規購入停止。Tier通知・LINE日次サマリーの対象外（既存保有分の評価把握のためダッシュボード表示のみ継続）"
+      "color": "#ec4899",
+      "yahoo_code": "02312245"
     },
     {
       "id": "sox",
@@ -66,18 +64,32 @@
       "yahoo_code": "0331418A"
     },
     {
-      "id": "tracers",
-      "name": "Tracers S&P500トップ10インデックス（米国株式）",
-      "short_name": "Tracers",
-      "company": "アモーヴァ・アセットマネジメント（旧：日興アセット）",
-      "fund_code": "02312245",
+      "id": "fang",
+      "name": "iFreeNEXT FANG+インデックス",
+      "short_name": "FANG+",
+      "company": "大和アセットマネジメント",
+      "fund_code": "04311181",
       "tiers": [
-        12,
-        20,
-        28
+        15,
+        25,
+        35
       ],
-      "color": "#ec4899",
-      "yahoo_code": "02312245"
+      "color": "#f97316",
+      "yahoo_code": "04311181",
+      "active": false,
+      "inactive_note": "2026-09以降新規購入停止。Tier通知・LINE日次サマリーの対象外（既存保有分の評価把握のためダッシュボード表示のみ継続）"
+    },
+    {
+      "id": "nasdaq100",
+      "name": "ニッセイNASDAQ100インデックスファンド＜購入・換金手数料なし＞",
+      "short_name": "NASDAQ100",
+      "company": "ニッセイアセットマネジメント",
+      "fund_code": "29313233",
+      "tiers": [],
+      "color": "#0ea5e9",
+      "yahoo_code": "29313233",
+      "active": false,
+      "inactive_note": "毎月積立は停止中（最後の約定は2026-09-10）。Tier通知・資金投入管理の対象外。基準価額・最高値比・平均取得単価に対する含み損益のみ表示（tiersは未設定）"
     }
   ],
   "periods": {
@@ -217,19 +229,6 @@
         "hidden": true,
         "hidden_note": "長期ポートフォリオの統合ビュー（S&P500合計評価額）用に基準価額のみ取得・保存する。保有ポジションのカード／チャートタブ／LINE日次サマリーには表示しない",
         "color": "#64748b"
-      },
-      {
-        "id": "nasdaq100",
-        "name": "ニッセイNASDAQ100インデックスファンド＜購入・換金手数料なし＞",
-        "short_name": "NASDAQ100",
-        "company": "ニッセイアセットマネジメント",
-        "fund_code": "29313233",
-        "source": "nikkei_fund",
-        "currency": "JPY",
-        "cost_basis": 0,
-        "hidden": true,
-        "hidden_note": "長期ポートフォリオの統合ビュー用に基準価額のみ取得・保存する。保有ポジションのカード／チャートタブ／LINE日次サマリーには表示しない",
-        "color": "#0ea5e9"
       }
     ],
     "gain_loss_thresholds": {
@@ -305,28 +304,6 @@
     },
     "groups": [
       {
-        "id": "sox",
-        "label": "SOX",
-        "role": "satellite",
-        "holdings": [
-          {
-            "fund_id": "sox",
-            "account": "attack"
-          }
-        ]
-      },
-      {
-        "id": "fang",
-        "label": "FANG+",
-        "role": "satellite",
-        "holdings": [
-          {
-            "fund_id": "fang",
-            "account": "attack"
-          }
-        ]
-      },
-      {
         "id": "tracers",
         "label": "Tracers（Top10）",
         "role": "satellite",
@@ -342,28 +319,13 @@
         ]
       },
       {
-        "id": "nasdaq100",
-        "label": "NASDAQ100",
+        "id": "sox",
+        "label": "SOX",
         "role": "satellite",
         "holdings": [
           {
-            "fund_id": "nasdaq100",
+            "fund_id": "sox",
             "account": "attack"
-          }
-        ]
-      },
-      {
-        "id": "orkan",
-        "label": "オルカン",
-        "role": "core",
-        "holdings": [
-          {
-            "fund_id": "orkan",
-            "account": "attack"
-          },
-          {
-            "fund_id": "orkan",
-            "account": "side"
           }
         ]
       },
@@ -383,6 +345,43 @@
           {
             "fund_id": "sbi_v_sp500",
             "account": "legacy"
+          }
+        ]
+      },
+      {
+        "id": "orkan",
+        "label": "オルカン",
+        "role": "core",
+        "holdings": [
+          {
+            "fund_id": "orkan",
+            "account": "attack"
+          },
+          {
+            "fund_id": "orkan",
+            "account": "side"
+          }
+        ]
+      },
+      {
+        "id": "fang",
+        "label": "FANG+",
+        "role": "satellite",
+        "holdings": [
+          {
+            "fund_id": "fang",
+            "account": "attack"
+          }
+        ]
+      },
+      {
+        "id": "nasdaq100",
+        "label": "NASDAQ100",
+        "role": "satellite",
+        "holdings": [
+          {
+            "fund_id": "nasdaq100",
+            "account": "attack"
           }
         ]
       }

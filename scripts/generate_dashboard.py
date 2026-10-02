@@ -145,7 +145,8 @@ def _build_chart_data(history: list[dict], settings: dict, peak: dict, purchase_
     for fund in settings["funds"]:
         fid = fund["id"]
         peak_val = peak.get(fid, {}).get("value")
-        if peak_val is None:
+        if peak_val is None or not fund.get("tiers") or not fund.get("active", True):
+            # Tier閾値のない銘柄・新規購入停止銘柄は閾値線を描画しない
             continue
         tier_lines[fid] = {
             "peak": peak_val,
@@ -265,7 +266,13 @@ def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
         dec_class = f"badge-{info['css']}"
 
         tier_val = r["tier"]
-        tier_str = f"Tier {tier_val}" if tier_val > 0 else "未到達"
+        is_inactive = r["fund_id"] in inactive_ids
+        tier_str = "-" if is_inactive else (f"Tier {tier_val}" if tier_val > 0 else "未到達")
+        gain = r.get("avg_cost_ratio")
+        if gain is None:
+            gain_html = "-"
+        else:
+            gain_html = f'<span style="color:var(--{"green" if gain >= 0 else "red"});font-weight:600;">{gain:+.1f}%</span>'
 
         rows.append(
             f'<tr>'
@@ -278,6 +285,7 @@ def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
             f'  </td>'
             f'  <td data-label="最高値比 (下落率)"><span class="val-drawdown">{format_drawdown(r["drawdown"])}</span></td>'
             f'  <td data-label="基準日比 (上昇率)">{format_baseline_ratio(r.get("baseline_ratio"))}</td>'
+            f'  <td data-label="平均取得単価比 (含み損益)">{gain_html}</td>'
             f'  <td data-label="到達段階"><span class="val-tier">{tier_str}</span></td>'
             f'  <td data-label="システム判定"><span class="status-badge {dec_class}">{dec_emoji} {dec_label}</span></td>'
             f'</tr>'
@@ -314,7 +322,8 @@ def _build_fund_cards(
         baseline_ratio = result.get("baseline_ratio")
         decision = result.get("decision", "HOLD")
         
-        tiers = fund["tiers"]
+        tiers = fund.get("tiers") or []
+        is_active = fund.get("active", True)
         color = fund["color"]
         
         info = decision_display(decision)
@@ -322,7 +331,7 @@ def _build_fund_cards(
         dec_label = info["label"]
         dec_class = f"dec-{info['css']}"
 
-        next_tier_text = _next_tier_text(tier, drawdown, tiers)
+        next_tier_text = _next_tier_text(tier, drawdown, tiers) if (is_active and tiers) else "新規購入停止（Tier判定なし）"
 
         nav_str = f"{nav:,.0f}円" if nav is not None else "取得失敗"
         peak_str = f"{peak_val:,.0f}円" if peak_val is not None else "未記録"
@@ -333,6 +342,13 @@ def _build_fund_cards(
         inactive_tag = INACTIVE_TAG if not fund.get("active", True) else ""
 
         tier_bars = _tier_bars(tier, tiers, color)
+        if is_active and tiers:
+            tier_section = (
+                '<div class="tier-indicator-title">購入目安 (Tier) 到達状況</div>'
+                f'<div class="tier-progress">{tier_bars}</div>'
+            )
+        else:
+            tier_section = '<div class="market-card__note">新規購入停止のため、Tier判定・購入判定は行いません（基準価額と含み損益の表示のみ）。</div>'
 
         card = f"""
 <div class="fund-card" style="--fund-color: {color}">
@@ -366,10 +382,7 @@ def _build_fund_cards(
     </div>
   </div>
 
-  <div class="tier-indicator-title">購入目安 (Tier) 到達状況</div>
-  <div class="tier-progress">
-    {tier_bars}
-  </div>
+  {tier_section}
 </div>
 """
         html_parts.append(card)
@@ -1243,6 +1256,7 @@ html, body{{ overflow-x: hidden; }}
             <th>監視銘柄</th>
             <th>最高値比 (下落率)</th>
             <th>基準日比 (上昇率)</th>
+            <th>平均取得単価比 (含み損益)</th>
             <th>到達段階</th>
             <th>システム判定</th>
           </tr>

@@ -40,7 +40,10 @@ from positions import (
     load_positions_history, append_positions_history,
     calc_gain_loss_ratio, judge_gain_loss_level,
 )
-from purchase_history import load_purchase_history, position_purchases, resolve_cost_basis
+from purchase_history import (
+    ACCOUNT_ATTACK, calc_gain_vs_average, filter_by_account,
+    load_purchase_history, position_purchases, resolve_cost_basis,
+)
 from judge import (
     load_peak, save_peak,
     load_triggered, save_triggered,
@@ -298,6 +301,11 @@ def main(dry_run: bool = False) -> None:
     # ----------------------------------------------------------
     triggered = load_triggered()
     fund_results = []
+    all_purchases = load_purchase_history()
+
+    def avg_cost_ratio(fund_id: str, nav: float | None) -> float | None:
+        """平均取得単価（攻撃フェーズ分）に対する現在の基準価額の損益率（%）。実績なしはNone。"""
+        return calc_gain_vs_average(filter_by_account(all_purchases.get(fund_id, []), ACCOUNT_ATTACK), nav)
 
     for fund in funds:
         fid = fund["id"]
@@ -310,6 +318,7 @@ def main(dry_run: bool = False) -> None:
                 "drawdown": 0.0,
                 "trend_5d": "→",
                 "trend_20d": "→",
+                "avg_cost_ratio": None,
                 "active": fund.get("active", True),
                 **({} if fund.get("active", True) else {"decision": "INACTIVE"}),
             })
@@ -327,7 +336,7 @@ def main(dry_run: bool = False) -> None:
             tier = 0
         else:
             drawdown = calc_drawdown(nav, peak_val)
-            tier = judge_tier(drawdown, fund["tiers"])
+            tier = judge_tier(drawdown, fund.get("tiers") or [])
 
         # 基準日比・購入判定（基準日価格が未設定の銘柄は基準日比を算出せずNone＝表示は「-」）
         active = fund.get("active", True)
@@ -392,15 +401,15 @@ def main(dry_run: bool = False) -> None:
             "baseline_nav": baseline_nav,
             "baseline_ratio": baseline_ratio,
             "decision": decision,
+            "avg_cost_ratio": avg_cost_ratio(fid, nav),
             "active": active,
         })
 
     # ----------------------------------------------------------
-    # 6.5 日次サマリー通知（新規購入停止銘柄はLINEに含めない）
+    # 6.5 日次サマリー通知（新規購入停止銘柄も、表示のみ（最高値比・平均取得単価比）でLINEに含める）
     # ----------------------------------------------------------
     if not dry_run and notifications_enabled:
-        summary_results = [r for r in fund_results if r.get("fund_id") not in inactive_ids]
-        notify_daily_summary(today_str, period_info, summary_results, dashboard_url, positions_display)
+        notify_daily_summary(today_str, period_info, fund_results, dashboard_url, positions_display)
     else:
         logger.info("[DRY RUN or 通知OFF] デイリーサマリー通知をスキップ")
 

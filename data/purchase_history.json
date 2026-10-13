@@ -65,6 +65,14 @@
   ],
   "orkan": [
     {
+      "date": "2026-06-10",
+      "price": 37197,
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2689
+    },
+    {
       "date": "2026-06-30",
       "category": "既存残高",
       "amount": 50000,
@@ -130,9 +138,25 @@
       "price": 19220,
       "category": "追加購入",
       "amount": 75000
+    },
+    {
+      "date": "2026-10-06",
+      "price": 19872,
+      "category": "未分類",
+      "amount": 75000,
+      "account": "attack",
+      "units": 37742
     }
   ],
   "sbi_v_sp500": [
+    {
+      "date": "2026-06-10",
+      "price": 39775,
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2515
+    },
     {
       "date": "2026-06-30",
       "category": "既存残高",
@@ -174,35 +198,43 @@
   ],
   "nasdaq100": [
     {
+      "date": "2026-06-10",
+      "price": 27825,
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 3594
+    },
+    {
       "date": "2026-06-30",
       "category": "既存残高",
       "amount": 50001,
       "units": 19951,
-      "account": "attack"
+      "account": "side"
     },
     {
       "date": "2026-07-10",
       "price": 28744,
-      "category": "定期積立",
+      "category": "別枠積立",
       "amount": 10000,
       "units": 3479,
-      "account": "attack"
+      "account": "side"
     },
     {
       "date": "2026-08-12",
       "price": 28064,
-      "category": "定期積立",
+      "category": "別枠積立",
       "amount": 10000,
       "units": 3564,
-      "account": "attack"
+      "account": "side"
     },
     {
       "date": "2026-09-10",
       "price": 26985,
-      "category": "定期積立",
+      "category": "別枠積立",
       "amount": 10000,
       "units": 3706,
-      "account": "attack"
+      "account": "side"
     }
   ]
 }

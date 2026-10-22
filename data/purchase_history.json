@@ -39,6 +39,14 @@
       "amount": 14706,
       "account": "attack",
       "units": 3091
+    },
+    {
+      "date": "2026-10-21",
+      "price": 42880,
+      "category": "未分類",
+      "amount": 48853,
+      "account": "attack",
+      "units": 11393
     }
   ],
   "sp500": [
@@ -114,6 +122,14 @@
       "amount": 10588,
       "account": "attack",
       "units": 2763
+    },
+    {
+      "date": "2026-10-13",
+      "price": 38401,
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2604
     }
   ],
   "tracers": [
@@ -194,6 +210,14 @@
       "amount": 10000,
       "account": "side",
       "units": 2531
+    },
+    {
+      "date": "2026-10-13",
+      "price": 41662,
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2401
     }
   ],
   "nasdaq100": [
@@ -235,6 +259,14 @@
       "amount": 10000,
       "units": 3706,
       "account": "side"
+    },
+    {
+      "date": "2026-10-13",
+      "price": 29002,
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 3448
     }
   ]
 }

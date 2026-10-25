@@ -10,10 +10,10 @@
     },
     {
       "tier": 2,
-      "date": "2026-09-16",
-      "invested": false,
-      "note": "瞬間的な下落と判断し、約定日には上昇すると見込んで意図的に投資を見送った（2026-09-16到達）",
-      "recovered": true
+      "date": "2026-10-26",
+      "invested": true,
+      "note": null,
+      "recovered": false
     }
   ],
   "sp500": [],

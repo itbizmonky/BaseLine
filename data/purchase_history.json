@@ -55,6 +55,14 @@
       "amount": 14706,
       "account": "attack",
       "units": 3617
+    },
+    {
+      "date": "2026-11-10",
+      "price": 38074,
+      "category": "未分類",
+      "amount": 53305,
+      "account": "attack",
+      "units": 14001
     }
   ],
   "sp500": [
@@ -85,6 +93,14 @@
       "amount": 11765,
       "account": "attack",
       "units": 2664
+    },
+    {
+      "date": "2026-11-10",
+      "price": 44001,
+      "category": "未分類",
+      "amount": 20000,
+      "account": "attack",
+      "units": 4546
     }
   ],
   "orkan": [
@@ -154,6 +170,22 @@
       "amount": 10588,
       "account": "attack",
       "units": 2847
+    },
+    {
+      "date": "2026-11-10",
+      "price": 37143,
+      "category": "未分類",
+      "amount": 23987,
+      "account": "attack",
+      "units": 6458
+    },
+    {
+      "date": "2026-11-11",
+      "price": 37279,
+      "category": "別枠積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2683
     }
   ],
   "tracers": [
@@ -172,6 +204,14 @@
       "amount": 21765,
       "account": "attack",
       "units": 13392
+    },
+    {
+      "date": "2026-11-10",
+      "price": 15810,
+      "category": "別枠積立",
+      "amount": 20000,
+      "account": "side",
+      "units": 12650
     }
   ],
   "newnisa_orkan": [
@@ -307,6 +347,22 @@
       "amount": 10000,
       "account": "side",
       "units": 3448
+    },
+    {
+      "date": "2026-11-10",
+      "price": 26330,
+      "category": "別枠積立",
+      "amount": 20000,
+      "account": "side",
+      "units": 7596
+    },
+    {
+      "date": "2026-11-11",
+      "price": 26293,
+      "category": "別枠積立",
+      "amount": 20000,
+      "account": "side",
+      "units": 7607
     }
   ]
 }

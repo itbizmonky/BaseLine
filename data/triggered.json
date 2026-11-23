@@ -23,11 +23,28 @@
       "recovered": false
     }
   ],
-  "sp500": [],
+  "sp500": [
+    {
+      "tier": 1,
+      "date": "2026-11-23",
+      "invested": true,
+      "note": null,
+      "recovered": false
+    }
+  ],
   "orkan": [
     {
       "tier": 1,
       "date": "2026-11-09",
+      "invested": true,
+      "note": null,
+      "recovered": false
+    }
+  ],
+  "tracers": [
+    {
+      "tier": 1,
+      "date": "2026-11-23",
       "invested": true,
       "note": null,
       "recovered": false

@@ -4,16 +4,14 @@ judge.py
 判定ロジックモジュール
 
 - 下落率の計算（設定来高値比）
-- Tier判定（Tier1/2/3 または 0=未到達）
-- 既発動Tier記録（重複通知防止）
-- 期間判定（②or③期間・残日数）
+- Tier判定（Tier1/2/3 または 0=未到達）。Tierは「下落の気づき」の目安で、購入判定・投入額とは無関係
+- 通知済みTierの記録と再通知の制御（重複通知防止・回復後の再武装）
 - 直近トレンド計算（↗↘→）
 """
 
 import json
 import csv
 import logging
-from datetime import date, datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -22,6 +20,10 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 PEAK_FILE = DATA_DIR / "peak.json"
 TRIGGERED_FILE = DATA_DIR / "triggered.json"
 HISTORY_FILE = DATA_DIR / "history.csv"
+
+# 通知済みTierを解除（再武装）する下落率の目安。通知済みTierのしきい値 × この値 より下落率が浅くなったら解除する
+# （既定0.5＝しきい値の半分。settings.json の alert.rearm_ratio で上書きする。しきい値付近の往復で通知が数倍に増えるのを防ぐ）
+DEFAULT_REARM_RATIO = 0.5
 
 
 # ------------------------------------------------------------------
@@ -41,43 +43,6 @@ def save_peak(peak: dict) -> None:
     DATA_DIR.mkdir(exist_ok=True)
     with open(PEAK_FILE, "w", encoding="utf-8") as f:
         json.dump(peak, f, ensure_ascii=False, indent=2)
-
-
-def load_triggered() -> dict:
-    """
-    発動済みTier履歴を読み込む。ファイルがなければ全ファンド空リストで返す。
-
-    各レコードは {"tier": int, "date": str|None, "invested": bool, "note": str|None,
-    "recovered": bool} 形式。「Tier到達（通知済み）」と「実際に投資したか」は別概念であり、
-    意図的に見送った場合は invested=False として記録する（重複通知防止のため、到達済み
-    自体は解除しない）。recovered は見送ったTierがその後回復したかどうかを表し、
-    update_recovery_status() / is_new_trigger() が再通知判定に使用する。
-
-    旧形式（プレーンな整数のリスト、例: [1, 2]）が残っている場合は自動的に新形式へ
-    移行する（invested=True・date=None として扱う。手動移行スクリプトは不要）。
-    """
-    # 銘柄IDは settings.json の funds に従って増減するため、固定キーでの補完はしない
-    # （未登録銘柄は呼び出し側が .get(fund_id, []) で空扱いする）
-    if not TRIGGERED_FILE.exists():
-        return {}
-    with open(TRIGGERED_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    # 旧形式（整数）から新形式（レコード）への自動移行、recoveredフィールドの補完
-    for fund_id, records in data.items():
-        data[fund_id] = [
-            {"tier": r, "date": None, "invested": True, "note": None, "recovered": False}
-            if isinstance(r, int)
-            else {**r, "recovered": r.get("recovered", False)}
-            for r in records
-        ]
-    return data
-
-
-def save_triggered(triggered: dict) -> None:
-    """発動済みTier履歴を保存する。"""
-    DATA_DIR.mkdir(exist_ok=True)
-    with open(TRIGGERED_FILE, "w", encoding="utf-8") as f:
-        json.dump(triggered, f, ensure_ascii=False, indent=2)
 
 
 def load_history() -> list[dict]:
@@ -170,101 +135,104 @@ def update_peak(
     peak_start_date: str,
     history: list[dict] | None = None,
     baseline: dict | None = None,
+    extra_points: dict | None = None,
 ) -> tuple[dict, list[str]]:
     """
-    各ファンドの設定来高値を更新する。
-    監視開始日（peak_start_date）以降のデータのみ高値更新の対象とする。
+    各資産の設定来高値を更新する。
+    資産ごとの起点日以降のデータだけを高値更新の対象とする。起点日は baseline.dates[資産ID]
+    （その資産を最初に購入した日）で、なければ peak_start_date。
 
-    ファンドの初回記録時は、peak_start_date以降のhistory.csv記録も確認し、
-    本日の値より高い記録があればそちらを初期値として採用する（peak_start_dateを
-    過去日付に設定した場合の取りこぼし防止。history未指定時は本日の値をそのまま使う）。
+    資産の初回記録時は、起点日以降の履歴（history）と extra_points（約定単価など、履歴に無い期間の
+    既知の価格 {資産ID: [(日付, 価格), ...]}）も確認し、本日の値より高い記録があればそちらを初期値に
+    採用する（起点日を過去に設定した場合の取りこぼし防止）。
 
-    さらに baseline（settings.jsonの基準日価格）が peak_start_date 以降かつ本日以前で、
-    記録済みの来高値を上回っている場合は補正する。history.csvはperak_start_date当日から
-    の記録が欠落している可能性があるため（例: 監視開始をさかのぼって設定した場合）、
-    唯一残っている基準日時点の実績値を取りこぼさないようにするための補正であり、
-    毎回無条件に確認する（初回記録済み以降のデータ欠落にも自己修復的に対応できる）。
+    さらに baseline（settings.jsonの基準日価格）が起点日以降かつ本日以前で、記録済みの高値を上回って
+    いる場合は補正する（履歴の欠落時に、唯一残っている基準日時点の実績値を取りこぼさないため。
+    毎回無条件に確認するので、初回記録済み以降のデータ欠落にも自己修復的に対応できる）。
 
     Returns:
-        (updated_peak, updated_fund_ids)
+        (updated_peak, updated_asset_ids)
     """
-    if today_str < peak_start_date:
-        logger.info(f"今日 {today_str} は高値更新対象期間外 (開始: {peak_start_date})")
-        return peak, []
-
     default_baseline_date = (baseline or {}).get("date")
     baseline_dates = (baseline or {}).get("dates", {})
     baseline_prices = (baseline or {}).get("prices", {})
 
     updated_ids = []
-    for fund_id, nav in navs.items():
+    for asset_id, nav in navs.items():
         if nav is None:
             continue
+        start = baseline_dates.get(asset_id, peak_start_date)
+        if today_str < start:
+            logger.info(f"{asset_id}: 今日 {today_str} は高値更新対象期間外 (起点: {start})")
+            continue
 
-        if fund_id not in peak:
-            seed = seed_initial_peak(history or [], fund_id, peak_start_date, nav, today_str)
-            peak[fund_id] = seed
-            updated_ids.append(fund_id)
-            logger.info(f"{fund_id}: 設定来高値を初期記録 {seed['value']:,.0f}円 ({seed['date']})")
+        if asset_id not in peak:
+            seed = seed_initial_peak(history or [], asset_id, start, nav, today_str, (extra_points or {}).get(asset_id))
+            peak[asset_id] = seed
+            updated_ids.append(asset_id)
+            logger.info(f"{asset_id}: 設定来高値を初期記録 {seed['value']:,.2f} ({seed['date']})")
 
-        current_peak = peak[fund_id].get("value", 0)
+        current_peak = peak[asset_id].get("value", 0)
 
-        # 銘柄ごとに基準日が異なる場合（後から追加した銘柄）は baseline.dates で個別指定できる
-        baseline_date = baseline_dates.get(fund_id, default_baseline_date)
-        baseline_price = baseline_prices.get(fund_id)
+        # 基準日価格（baseline.prices）。基準日は baseline.dates で資産ごとに指定でき、なければ既定の基準日
+        baseline_date = baseline_dates.get(asset_id, default_baseline_date)
+        baseline_price = baseline_prices.get(asset_id)
         if (
             baseline_date is not None
             and baseline_price is not None
-            and peak_start_date <= baseline_date <= today_str
+            and start <= baseline_date <= today_str
             and baseline_price > current_peak
         ):
-            peak[fund_id] = {"value": baseline_price, "date": baseline_date}
+            peak[asset_id] = {"value": baseline_price, "date": baseline_date}
             current_peak = baseline_price
-            if fund_id not in updated_ids:
-                updated_ids.append(fund_id)
-            logger.info(
-                f"{fund_id}: 基準日({baseline_date})価格{baseline_price:,.0f}円が記録済み来高値を"
-                f"上回るため補正"
-            )
+            if asset_id not in updated_ids:
+                updated_ids.append(asset_id)
+            logger.info(f"{asset_id}: 基準日({baseline_date})価格{baseline_price:,.2f}が記録済み高値を上回るため補正")
 
         if nav > current_peak:
-            peak[fund_id] = {"value": nav, "date": today_str}
-            if fund_id not in updated_ids:
-                updated_ids.append(fund_id)
-            logger.info(f"{fund_id}: 設定来高値を更新 {current_peak} → {nav}円 ({today_str})")
+            peak[asset_id] = {"value": nav, "date": today_str}
+            if asset_id not in updated_ids:
+                updated_ids.append(asset_id)
+            logger.info(f"{asset_id}: 設定来高値を更新 {current_peak} → {nav} ({today_str})")
 
     return peak, updated_ids
 
 
-def seed_initial_peak(history: list[dict], fund_id: str, peak_start_date: str, today_nav: float, today_str: str) -> dict:
+def seed_initial_peak(
+    history: list[dict],
+    fund_id: str,
+    peak_start_date: str,
+    today_nav: float,
+    today_str: str,
+    extra_points: list[tuple[str, float]] | None = None,
+) -> dict:
     """
     ピーク未記録時の初期値を決定する。
-    peak_start_date が過去日付の場合、その日以降で既にhistory.csvに記録済みの値の中に
-    本日の値より高いものがあれば、それを初期ピークとして採用する（取りこぼし防止）。
+    起点日以降で既に記録済みの値（history と extra_points）の中に本日の値より高いものがあれば、
+    それを初期ピークとして採用する（取りこぼし防止）。
     """
     best_value = today_nav
     best_date = today_str
-    for row in history:
-        row_date = row.get("date")
-        row_nav = row.get(fund_id)
-        if row_date is None or row_nav is None:
+    points = [(row.get("date"), row.get(fund_id)) for row in history] + list(extra_points or [])
+    for p_date, p_value in points:
+        if p_date is None or p_value is None:
             continue
-        if row_date < peak_start_date or row_date > today_str:
+        if p_date < peak_start_date or p_date > today_str:
             continue
-        if row_nav > best_value:
-            best_value = row_nav
-            best_date = row_date
+        if p_value > best_value:
+            best_value = p_value
+            best_date = p_date
     return {"value": best_value, "date": best_date}
 
 
 # ------------------------------------------------------------------
-# 下落率・Tier判定
+# 下落率・Tier判定・基準日比
 # ------------------------------------------------------------------
 
 def calc_drawdown(current_nav: float, peak_nav: float) -> float:
     """
     下落率を計算する（%で返す）。
-    下落率 = (設定来高値 - 当日基準価額) / 設定来高値 × 100
+    下落率 = (設定来高値 - 現在値) / 設定来高値 × 100
     現在値が設定来高値以上（高値更新中）の場合は 0.0 を返す（下落率はマイナスになり得ない）。
     """
     if peak_nav <= 0:
@@ -272,9 +240,9 @@ def calc_drawdown(current_nav: float, peak_nav: float) -> float:
     return max(0.0, (peak_nav - current_nav) / peak_nav * 100)
 
 
-def judge_tier(drawdown: float, thresholds: list[int]) -> int:
+def judge_tier(drawdown: float, thresholds: list[float]) -> int:
     """
-    下落率からTier番号を判定する。
+    下落率からTier番号を判定する。thresholds が空（Tier未設定）なら常に 0。
 
     Args:
         drawdown: 下落率（%、正の値）
@@ -284,7 +252,7 @@ def judge_tier(drawdown: float, thresholds: list[int]) -> int:
         到達最大Tier番号 (0=未到達, 1, 2, 3)
     """
     tier = 0
-    for i, threshold in enumerate(thresholds, start=1):
+    for i, threshold in enumerate(thresholds or [], start=1):
         if drawdown >= threshold:
             tier = i
     return tier
@@ -293,7 +261,7 @@ def judge_tier(drawdown: float, thresholds: list[int]) -> int:
 def calc_baseline_ratio(current_nav: float, baseline_nav: float) -> float:
     """
     基準日比（上昇/下落率）を計算する（%で返す）。
-    (現在価格 - 基準日価格) / 基準日価格 * 100
+    (現在値 - 基準日価格) / 基準日価格 * 100
     """
     if baseline_nav <= 0:
         return 0.0
@@ -307,185 +275,98 @@ def format_baseline_ratio(ratio: float | None, decimals: int = 1) -> str:
     return f"{ratio:+.{decimals}f}%"
 
 
-def judge_decision(tier: int, current_nav: float, baseline_nav: float, tolerance_pct: float, is_high_water_mark: bool) -> str:
+def format_drawdown(drawdown: float, decimals: int = 1) -> str:
     """
-    購入判定を行う。
-    - HIGH: 高値更新中
-    - BUY: Tier到達 かつ 基準日価格＋許容上昇率以内
-    - WAIT: Tier到達 だが 基準日価格＋許容上昇率より高い
-    - HOLD: Tier未到達
+    下落率を表示用文字列に整形する。
+    calc_drawdown() は0未満を返さないため、0の場合は符号なし（"0.0%"）で表示し、
+    "-0.0%" のような紛らわしい表記を避ける。
     """
-    if is_high_water_mark:
-        return "HIGH"
-    
-    if tier > 0:
-        if baseline_nav > 0:
-            threshold_price = baseline_nav * (1 + tolerance_pct / 100.0)
-            if current_nav <= threshold_price:
-                return "BUY"
+    if drawdown <= 0:
+        return f"{drawdown:.{decimals}f}%"
+    return f"-{drawdown:.{decimals}f}%"
+
+
+# ------------------------------------------------------------------
+# 通知済みTier（重複通知防止・回復後の再武装）
+# ------------------------------------------------------------------
+
+def load_triggered() -> dict:
+    """
+    通知済みTierを読み込む。ファイルがなければ空を返す。
+
+    形式: {資産ID: {"tier": 通知済みの最大Tier, "date": 通知日(YYYY-MM-DD)|None}}
+    旧形式（Tier別レコードのリスト [{"tier","date","invested",...}] や整数のリスト）が残っている場合は、
+    最大のTierとその日付に自動的に移行する（invested・note・recovered は破棄。「通知済み」と
+    「投資したか」を分け、投資の事実は約定履歴で確認する運用に変えたため）。
+    """
+    if not TRIGGERED_FILE.exists():
+        return {}
+    with open(TRIGGERED_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    migrated = {}
+    for asset_id, value in data.items():
+        if isinstance(value, dict):
+            if value.get("tier"):
+                migrated[asset_id] = {"tier": int(value["tier"]), "date": value.get("date")}
+            continue
+        records = [{"tier": r, "date": None} if isinstance(r, int) else r for r in (value or [])]
+        if records:
+            top = max(records, key=lambda r: r["tier"])
+            migrated[asset_id] = {"tier": int(top["tier"]), "date": top.get("date")}
+    return migrated
+
+
+def save_triggered(triggered: dict) -> None:
+    """通知済みTierを保存する。"""
+    DATA_DIR.mkdir(exist_ok=True)
+    with open(TRIGGERED_FILE, "w", encoding="utf-8") as f:
+        json.dump(triggered, f, ensure_ascii=False, indent=2)
+
+
+def notified_tier(asset_id: str, triggered: dict) -> int:
+    """通知済みの最大Tier（なければ0）。"""
+    return int((triggered.get(asset_id) or {}).get("tier", 0))
+
+
+def is_new_trigger(asset_id: str, current_tier: int, triggered: dict) -> bool:
+    """
+    新規Tier到達（通知すべきか）を判定する。通知済みのTierより深いTierに到達したときだけ True。
+    同じ下落局面が続いている間は再通知しない。回復後の再武装は rearm_if_recovered() が行う。
+    """
+    return current_tier > notified_tier(asset_id, triggered)
+
+
+def record_notified(asset_id: str, tier: int, triggered: dict, date: str | None = None) -> dict:
+    """通知したTierを記録する（破壊的変更）。"""
+    triggered[asset_id] = {"tier": tier, "date": date}
+    return triggered
+
+
+def rearm_if_recovered(
+    asset_id: str,
+    drawdown: float,
+    thresholds: list[float],
+    triggered: dict,
+    ratio: float = DEFAULT_REARM_RATIO,
+) -> dict:
+    """
+    下落率が「通知済みTierのしきい値 × ratio」より浅くなったら、通知済みTierを下げる（破壊的変更）。
+    再び下落して深いTierに達したときに再通知できるようにするための状態更新。
+    しきい値付近の小さな上下では解除しない（ちらつきによる連続通知の防止）。
+    例: Tier1が11%、ratio=0.5 なら、下落率が5.5%より浅くなるまでは通知済みのまま。
+    下げ先は、現在の下落率でまだ到達しているTier（どれも到達していなければ記録を削除）。
+    """
+    notified = notified_tier(asset_id, triggered)
+    if notified <= 0 or not thresholds or notified > len(thresholds):
+        return triggered
+    if drawdown < thresholds[notified - 1] * ratio:
+        reached = judge_tier(drawdown, thresholds)
+        if reached < notified:
+            if reached == 0:
+                triggered.pop(asset_id, None)
             else:
-                return "WAIT"
-        else:
-            return "BUY"
-    
-    return "HOLD"
-
-
-def is_new_trigger(fund_id: str, current_tier: int, triggered: dict) -> bool:
-    """
-    新規Tier到達かどうかを判定する（重複通知防止）。
-    current_tier が 0 の場合は False を返す。
-
-    - 投資済み(invested=True)のTierは、一度発動したら再通知しない（その枠の資金は使用済みのため）。
-    - 投資を見送った(invested=False)Tierは、いったんそのTierの水準を上回るまで回復してから
-      再びそのTierへ到達した場合にのみ「新規到達」として再通知する（同じ下落局面が続いている
-      間は再通知しない。回復判定は update_recovery_status() が行う）。
-    """
-    if current_tier == 0:
-        return False
-    record = next((r for r in triggered.get(fund_id, []) if r["tier"] == current_tier), None)
-    if record is None:
-        return True
-    if record.get("invested", True):
-        return False
-    return record.get("recovered", False)
-
-
-def update_recovery_status(fund_id: str, current_tier: int, triggered: dict) -> dict:
-    """
-    投資を見送った(invested=False)Tierについて、現在のTierがそのTier番号を下回っていれば
-    「回復した」とマークする（破壊的変更）。再びそのTierへ到達した際に is_new_trigger() が
-    再通知対象と判定できるようにするための状態更新。
-    """
-    for record in triggered.get(fund_id, []):
-        if not record.get("invested", True) and current_tier < record["tier"]:
-            record["recovered"] = True
+                triggered[asset_id] = {"tier": reached, "date": (triggered.get(asset_id) or {}).get("date")}
     return triggered
-
-
-def record_trigger(
-    fund_id: str,
-    tier: int,
-    triggered: dict,
-    date: str | None = None,
-    invested: bool = True,
-    note: str | None = None,
-) -> dict:
-    """
-    発動済みTierを記録する（破壊的変更）。
-    invested のデフォルトは True（Tier到達＝投資する運用が標準のため）。
-    意図的に投資を見送った場合は set_investment_status() で事後的に補正する。
-
-    同一Tierの記録が既に存在する場合（見送り後に回復して再到達したケース）は、
-    その記録を新しい到達として上書きする（recoveredフラグをリセット）。
-    """
-    if fund_id not in triggered:
-        triggered[fund_id] = []
-    existing = next((r for r in triggered[fund_id] if r["tier"] == tier), None)
-    if existing is None:
-        triggered[fund_id].append(
-            {"tier": tier, "date": date, "invested": invested, "note": note, "recovered": False}
-        )
-        triggered[fund_id].sort(key=lambda r: r["tier"])
-    else:
-        existing.update({"date": date, "invested": invested, "note": note, "recovered": False})
-    return triggered
-
-
-def set_investment_status(
-    fund_id: str,
-    tier: int,
-    triggered: dict,
-    invested: bool,
-    note: str | None = None,
-    date: str | None = None,
-) -> dict:
-    """
-    既に到達記録があるTierについて、実際に投資したかどうかを事後的に補正する（破壊的変更）。
-    date を指定すると、到達日が未記録（None）の場合に限り補完する（既存の記録は上書きしない）。
-    対象の記録が見つからない場合は変更しない。
-    """
-    for record in triggered.get(fund_id, []):
-        if record["tier"] == tier:
-            record["invested"] = invested
-            if note is not None:
-                record["note"] = note
-            if date is not None and record.get("date") is None:
-                record["date"] = date
-            break
-    return triggered
-
-
-# ------------------------------------------------------------------
-# 期間判定
-# ------------------------------------------------------------------
-
-def detect_period(today: date, settings: dict) -> dict:
-    """
-    今日が②or③のどの期間にあるかを判定する。
-
-    Returns:
-        {
-            "phase": "before_start" | "phase2" | "phase3" | "extension" | "ended" | "none",
-            "label": "②期間開始前" | "②期間" | "③期間" | "延長期間" | "監視期間終了" | "監視外期間",
-            "days_remaining": int,
-            "end_date": date,
-        }
-    """
-    periods = settings["periods"]
-
-    def parse_date(s: str) -> date:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-
-    p2_start = parse_date(periods["phase2"]["start"])
-    p2_end   = parse_date(periods["phase2"]["end"])
-    p3_start = parse_date(periods["phase3"]["start"])
-    p3_end   = parse_date(periods["phase3"]["end"])
-    ext_end  = parse_date(periods["extension_end"])
-
-    if today < p2_start:
-        return {
-            "phase": "before_start",
-            "label": "②期間開始前",
-            "days_remaining": (p2_start - today).days,
-            "end_date": p2_start,
-        }
-    elif p2_start <= today <= p2_end:
-        return {
-            "phase": "phase2",
-            "label": "②期間",
-            "days_remaining": (p2_end - today).days,
-            "end_date": p2_end,
-        }
-    elif p3_start <= today <= p3_end:
-        return {
-            "phase": "phase3",
-            "label": "③期間",
-            "days_remaining": (p3_end - today).days,
-            "end_date": p3_end,
-        }
-    elif p2_end < today < p3_start or today > p3_end:
-        # 延長期間チェック
-        if today <= ext_end:
-            return {
-                "phase": "extension",
-                "label": "延長期間",
-                "days_remaining": (ext_end - today).days,
-                "end_date": ext_end,
-            }
-        else:
-            return {
-                "phase": "ended",
-                "label": "監視期間終了",
-                "days_remaining": 0,
-                "end_date": ext_end,
-            }
-    return {
-        "phase": "none",
-        "label": "監視外期間",
-        "days_remaining": 0,
-        "end_date": today,
-    }
 
 
 # ------------------------------------------------------------------
@@ -525,115 +406,24 @@ def calc_trend(history: list[dict], fund_id: str, days: int = 5) -> str:
 
 
 # ------------------------------------------------------------------
-# 残資金計算
-# ------------------------------------------------------------------
-
-def calc_remaining_funds(fund_id: str, triggered: dict, phase_key: str, settings: dict) -> dict:
-    """
-    指定ファンド・期間の残資金（投入済み/未投入）を計算する。
-
-    Returns:
-        {"invested": int, "remaining": int, "total": int, "tier_detail": {...}}
-    """
-    phase_funds = settings.get(f"funds_{phase_key}", {})
-    tier_amounts = phase_funds.get("tier_amounts", {}).get(fund_id, {})
-    fund_records = triggered.get(fund_id, [])
-    invested_tiers = {r["tier"] for r in fund_records if r.get("invested", True)}
-
-    invested = sum(
-        tier_amounts.get(f"tier{t}", 0)
-        for t in invested_tiers
-    )
-    total = sum(tier_amounts.values()) if tier_amounts else 0
-    remaining = total - invested
-
-    tier_detail = {}
-    for i in range(1, 4):
-        key = f"tier{i}"
-        amount = tier_amounts.get(key, 0)
-        tier_detail[f"tier{i}"] = {
-            "amount": amount,
-            "invested": i in invested_tiers,
-        }
-
-    return {
-        "invested": invested,
-        "remaining": remaining,
-        "total": total,
-        "tier_detail": tier_detail,
-    }
-
-
-# ------------------------------------------------------------------
-# 判定(BUY/WAIT/HOLD/HIGH) 表示情報
-# ------------------------------------------------------------------
-
-DECISION_INFO = {
-    "BUY":  {"emoji": "🟢", "tag": "BUY",  "label": "購入推奨",   "css": "buy"},
-    "WAIT": {"emoji": "🟡", "tag": "WAIT", "label": "上昇待機",   "css": "wait"},
-    "HOLD": {"emoji": "⚪", "tag": "HOLD", "label": "様子見",     "css": "hold"},
-    "HIGH": {"emoji": "🔵", "tag": "HIGH", "label": "高値更新中", "css": "high"},
-    # 新規購入停止（settings.json の funds[].active=false）。Tier到達しても通知・購入推奨の対象外
-    "INACTIVE": {"emoji": "⏹", "tag": "停止", "label": "新規購入停止", "css": "hold"},
-}
-
-
-def format_drawdown(drawdown: float, decimals: int = 1) -> str:
-    """
-    下落率を表示用文字列に整形する。
-    calc_drawdown() は0未満を返さないため、0の場合は符号なし（"0.0%"）で表示し、
-    "-0.0%" のような紛らわしい表記を避ける。
-    """
-    if drawdown <= 0:
-        return f"{drawdown:.{decimals}f}%"
-    return f"-{drawdown:.{decimals}f}%"
-
-
-def decision_display(decision: str) -> dict:
-    """
-    判定(BUY/WAIT/HOLD/HIGH)ごとの絵文字・英語タグ・日本語ラベル・CSSクラス接尾辞を
-    まとめて返す（notify.py / generate_dashboard.py で共通利用）。
-    """
-    return DECISION_INFO.get(decision, {"emoji": "", "tag": decision, "label": decision, "css": "hold"})
-
-
-# ------------------------------------------------------------------
 # スタンドアローン実行（テスト用）
 # ------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    # テストデータ
-    test_navs = {"fang": 11000, "sox": 8910, "sp500": 24000, "orkan": 21000}
-    test_peak = {
-        "fang":  {"value": 13200, "date": "2026-09-10"},
-        "sox":   {"value": 9900,  "date": "2026-09-08"},
-        "sp500": {"value": 26000, "date": "2026-09-12"},
-        "orkan": {"value": 23500, "date": "2026-09-12"},
-    }
-
-    import json
     settings_path = Path(__file__).parent.parent / "config" / "settings.json"
-    with open(settings_path) as f:
+    with open(settings_path, encoding="utf-8") as f:
         settings = json.load(f)
 
-    print("=== 下落率・Tier判定テスト ===")
+    print("=== 下落率・Tier判定テスト（仮の値） ===")
+    test_navs = {"sp500": 40000, "orkan": 35000, "tracers": 14000, "sox": 40000}
+    test_peak = {"sp500": 45000, "orkan": 38000, "tracers": 17000, "sox": 50000}
     for fund in settings["funds"]:
         fid = fund["id"]
-        nav = test_navs.get(fid)
-        peak_val = test_peak.get(fid, {}).get("value", nav)
+        nav, peak_val = test_navs.get(fid), test_peak.get(fid)
         if nav is None or peak_val is None:
             continue
         dd = calc_drawdown(nav, peak_val)
         tiers = fund.get("tiers") or []
-        tier = judge_tier(dd, tiers)
-        print(f"  {fund['short_name']:10s}: 下落率={dd:.2f}% → Tier{tier} (閾値: {tiers}%)")
-
-    print("\n=== 期間判定テスト ===")
-    today = date(2026, 10, 15)
-    period_info = detect_period(today, settings)
-    print(f"  {today}: {period_info['label']} / 残{period_info['days_remaining']}日")
+        print(f"  {fund['short_name']:10s}: 下落率={dd:.2f}% → Tier{judge_tier(dd, tiers)} (閾値: {tiers}%)")

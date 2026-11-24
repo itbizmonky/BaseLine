@@ -7,33 +7,20 @@
   },
   "funds": [
     {
-      "id": "tracers",
-      "name": "Tracers S&P500トップ10インデックス（米国株式）",
-      "short_name": "Tracers",
-      "company": "アモーヴァ・アセットマネジメント（旧：日興アセット）",
-      "fund_code": "02312245",
+      "id": "sbi_v_sp500",
+      "name": "SBI・V・S&P500インデックス・ファンド",
+      "short_name": "SBI・V・S&P500",
+      "company": "SBIアセットマネジメント",
+      "fund_code": "89311199",
+      "role": "core",
+      "alert": false,
       "tiers": [
-        12,
-        20,
-        28
+        11,
+        17,
+        33
       ],
-      "color": "#ec4899",
-      "yahoo_code": "02312245"
-    },
-    {
-      "id": "sox",
-      "name": "ニッセイSOX指数インデックスファンド（米国半導体株）",
-      "short_name": "SOX半導体",
-      "company": "ニッセイアセットマネジメント",
-      "fund_code": "29314233",
-      "tiers": [
-        10,
-        18,
-        28
-      ],
-      "color": "#a855f7",
-      "yahoo_code": "29314233",
-      "avg_cost_note": "2028年月初の出口判定に使用（平均取得単価を上回っていれば売却、下回っていれば最大12ヶ月延長監視）"
+      "color": "#64748b",
+      "yahoo_code": "89311199"
     },
     {
       "id": "sp500",
@@ -41,10 +28,12 @@
       "short_name": "S&P500",
       "company": "三菱UFJアセットマネジメント",
       "fund_code": "03311187",
+      "role": "core",
+      "alert": true,
       "tiers": [
-        7,
-        12,
-        18
+        11,
+        17,
+        33
       ],
       "color": "#3b82f6",
       "yahoo_code": "03311187"
@@ -55,29 +44,31 @@
       "short_name": "オルカン",
       "company": "三菱UFJアセットマネジメント",
       "fund_code": "0331418A",
+      "role": "core",
+      "alert": true,
       "tiers": [
-        6,
-        10,
-        15
+        11,
+        17,
+        33
       ],
       "color": "#10b981",
       "yahoo_code": "0331418A"
     },
     {
-      "id": "fang",
-      "name": "iFreeNEXT FANG+インデックス",
-      "short_name": "FANG+",
-      "company": "大和アセットマネジメント",
-      "fund_code": "04311181",
+      "id": "tracers",
+      "name": "Tracers S&P500トップ10インデックス（米国株式）",
+      "short_name": "Tracers",
+      "company": "アモーヴァ・アセットマネジメント（旧：日興アセット）",
+      "fund_code": "02312245",
+      "role": "satellite",
+      "alert": true,
       "tiers": [
-        15,
-        25,
-        35
+        12,
+        20,
+        28
       ],
-      "color": "#f97316",
-      "yahoo_code": "04311181",
-      "active": false,
-      "inactive_note": "2026-09以降新規購入停止。Tier通知・LINE日次サマリーの対象外（既存保有分の評価把握のためダッシュボード表示のみ継続）"
+      "color": "#ec4899",
+      "yahoo_code": "02312245"
     },
     {
       "id": "nasdaq100",
@@ -85,96 +76,97 @@
       "short_name": "NASDAQ100",
       "company": "ニッセイアセットマネジメント",
       "fund_code": "29313233",
-      "tiers": [],
+      "role": "satellite",
+      "alert": true,
+      "tiers": [
+        12,
+        25,
+        31
+      ],
       "color": "#0ea5e9",
-      "yahoo_code": "29313233",
-      "active": false,
-      "inactive_note": "別枠積立（クレジットカード・成長投資枠）の銘柄。2026-11-10約定分から月20,000円で再開。Tier通知・Tier判定・資金投入管理の対象外で、基準価額・最高値比・平均取得単価（別枠積立の実績）に対する含み損益のみ表示（tiersは未設定）。cost_accountsは平均取得単価・含み損益・グラフマーカーに使う口座（省略時はattack）",
-      "inactive_label": "別枠積立・表示のみ",
-      "cost_accounts": [
-        "side"
-      ]
+      "yahoo_code": "29313233"
+    },
+    {
+      "id": "sox",
+      "name": "ニッセイSOX指数インデックスファンド（米国半導体株）",
+      "short_name": "SOX半導体",
+      "company": "ニッセイアセットマネジメント",
+      "fund_code": "29314233",
+      "role": "satellite",
+      "alert": false,
+      "tiers": [
+        16,
+        33,
+        45
+      ],
+      "color": "#a855f7",
+      "yahoo_code": "29314233"
+    },
+    {
+      "id": "fang",
+      "name": "iFreeNEXT FANG+インデックス",
+      "short_name": "FANG+",
+      "company": "大和アセットマネジメント",
+      "fund_code": "04311181",
+      "role": "satellite",
+      "alert": false,
+      "tiers": [
+        15,
+        29,
+        36
+      ],
+      "color": "#f97316",
+      "yahoo_code": "04311181"
+    },
+    {
+      "id": "newnisa_orkan",
+      "name": "はじめてのNISA・全世界株式インデックス（オール・カントリー）",
+      "short_name": "はじめてのNISA全世界株式",
+      "company": "野村アセットマネジメント",
+      "fund_code": "01312237",
+      "role": "separate",
+      "alert": false,
+      "tiers": [
+        11,
+        17,
+        33
+      ],
+      "color": "#eab308",
+      "yahoo_code": "01312237"
     }
   ],
-  "periods": {
-    "phase2": {
-      "label": "②期間",
-      "start": "2026-08-01",
-      "end": "2027-02-28"
-    },
-    "phase3": {
-      "label": "③期間",
-      "start": "2027-03-01",
-      "end": "2027-08-31"
-    },
-    "extension_end": "2027-12-31"
-  },
   "peak_start_date": "2026-07-07",
-  "funds_phase2": {
-    "_comment": "②期間の原資金額設定（円）。tier_amountsは各Tierへの投入予定額",
-    "total": 533049,
-    "tier_amounts": {
-      "sox": {
-        "tier1": 33316,
-        "tier2": 46642,
-        "tier3": 53305
-      },
-      "sp500": {
-        "tier1": 26652,
-        "tier2": 37314,
-        "tier3": 42644
-      },
-      "orkan": {
-        "tier1": 23987,
-        "tier2": 33582,
-        "tier3": 38380
-      },
-      "tracers": {
-        "tier1": 49307,
-        "tier2": 69029,
-        "tier3": 78891
-      }
-    }
-  },
-  "funds_phase3": {
-    "_comment": "③期間の原資金額設定（円）。上記と同様に設定してください",
-    "total": 533050,
-    "tier_amounts": {
-      "sox": {
-        "tier1": 33316,
-        "tier2": 46642,
-        "tier3": 53305
-      },
-      "sp500": {
-        "tier1": 26652,
-        "tier2": 37314,
-        "tier3": 42644
-      },
-      "orkan": {
-        "tier1": 23987,
-        "tier2": 33582,
-        "tier3": 38380
-      },
-      "tracers": {
-        "tier1": 49307,
-        "tier2": 69030,
-        "tier3": 78891
-      }
-    }
-  },
   "baseline": {
+    "_comment": "基準日価格（基準日比・設定来高値の補正に使う）。date は既定の基準日、dates は銘柄ごとの基準日（その資産を最初に購入した日。最高値の起点も兼ねる）、prices は基準日の価格（投資信託は基準価額、米国株はUSD）。",
     "date": "2026-07-07",
     "dates": {
-      "tracers": "2026-09-18"
+      "tracers": "2026-09-18",
+      "sbi_v_sp500": "2026-01-06",
+      "newnisa_orkan": "2026-08-06",
+      "tesla": "2026-08-07",
+      "nvda": "2026-11-12"
     },
-    "initial_price_tolerance_percent": 5.0,
     "prices": {
       "fang": 94387,
       "sox": 50162,
       "sp500": 44920,
       "orkan": 38532,
-      "tracers": 16416
+      "tracers": 16416,
+      "nasdaq100": 28715,
+      "sbi_v_sp500": 36175,
+      "newnisa_orkan": 19818,
+      "tesla": 317.01,
+      "nvda": 175.0
     }
+  },
+  "alert": {
+    "_comment": "下落の気づき通知（LINE）。alert:true の銘柄で、最高値比が新しいTierのしきい値に達したときだけ通知する（購入額・BUY表示・原資の消費は伴わない）。通知済みTierは、下落率が「通知済みTierのしきい値 × rearm_ratio」より浅くなったら解除し、再び下落したときに再通知する（しきい値付近の往復で通知が数倍に増えるのを防ぐ。しきい値は校正結果＝Personal/02_判断記録/Tierしきい値_検討結果.md の標準感度。履歴が短い資産は約1年後に再校正）",
+    "rearm_ratio": 0.5
+  },
+  "nisa_limits": {
+    "_comment": "NISAの年間投資枠（円）。ダッシュボードの使用率に使う",
+    "growth": 2400000,
+    "tsumitate": 1200000
   },
   "notification": {
     "enabled": true,
@@ -182,7 +174,7 @@
     "retry_interval_sec": 30
   },
   "market_indicators": {
-    "_comment": "市場心理指標（参考情報）。BUY/WAIT判定には使用しない。ダッシュボードのみに表示（LINE通知には含めない）",
+    "_comment": "市場心理指標（参考情報）。Tierの判定には使用しない。ダッシュボードのみに表示（LINE通知には含めない）",
     "enabled": true,
     "sources": {
       "vix": "https://www.nikkei.com/marketdata/quote/VIX/",
@@ -197,20 +189,9 @@
     }
   },
   "positions": {
-    "_comment": "Tier投資対象ではない、監視専用の保有ポジション（含み損益の追跡のみ）。BUY/WAIT判定には使用しない。LINE日次サマリーに追記して通知する。cost_basisは、約定実績（data/purchase_history.jsonに銘柄IDのキーで登録）がある銘柄ではその平均取得単価が優先され、約定実績がない場合の初期値として使われる。約定実績がない銘柄に限り、purchase_date/purchase_amount（任意）でカード表示・チャートマーカーを1件だけ指定できる",
+    "_comment": "日経の基準価額が取れない保有資産（米国個別株）。最高値比・平均取得単価比はUSD基準。購入実績は data/purchase_history.json（資産IDのキー）。株価はYahoo Finance（米国）のチャートAPIから取得する",
     "enabled": true,
     "items": [
-      {
-        "id": "newnisa_orkan",
-        "name": "はじめてのNISA・全世界株式インデックス（オール・カントリー）",
-        "short_name": "はじめてのNISA全世界株式",
-        "company": "野村アセットマネジメント",
-        "fund_code": "01312237",
-        "source": "nikkei_fund",
-        "currency": "JPY",
-        "cost_basis": 19818,
-        "color": "#eab308"
-      },
       {
         "id": "tesla",
         "name": "テスラ",
@@ -218,35 +199,38 @@
         "ticker": "TSLA",
         "source": "yahoo_us_stock",
         "currency": "USD",
-        "cost_basis": 317.0,
+        "role": "satellite",
+        "alert": false,
+        "tiers": [
+          31,
+          49,
+          67
+        ],
         "color": "#e11d48"
       },
       {
-        "id": "sbi_v_sp500",
-        "name": "SBI・V・S&P500インデックス・ファンド",
-        "short_name": "SBI・V・S&P500",
-        "company": "SBIアセットマネジメント",
-        "fund_code": "89311199",
-        "source": "nikkei_fund",
-        "currency": "JPY",
-        "cost_basis": 0,
-        "hidden": true,
-        "hidden_note": "長期ポートフォリオの統合ビュー（S&P500合計評価額）用に基準価額のみ取得・保存する。保有ポジションのカード／チャートタブ／LINE日次サマリーには表示しない",
-        "color": "#64748b"
+        "id": "nvda",
+        "name": "エヌビディア",
+        "short_name": "エヌビディア",
+        "ticker": "NVDA",
+        "source": "yahoo_us_stock",
+        "currency": "USD",
+        "role": "satellite",
+        "alert": false,
+        "tiers": [
+          24,
+          38,
+          67
+        ],
+        "color": "#76b900"
       }
-    ],
-    "gain_loss_thresholds": {
-      "great": 10,
-      "good": 0,
-      "caution": -10,
-      "warning": -20
-    }
+    ]
   },
   "sbi_import": {
-    "_comment": "scripts/import_sbi_history.py（SBI証券の約定履歴CSV取り込み）用の設定。account_mapはCSVの預り区分→口座（attack=攻撃フェーズ/成長投資枠、side=別枠積立/つみたて投資枠）。fund_keywordsは銘柄名（全角→半角に正規化後）に含まれるキーワード→purchase_history.jsonのキー。side_fundsは別枠積立でしか持たない銘柄（その銘柄の約定は金額・預り区分に関係なく別枠積立として取り込む）",
-    "account_map": {
-      "NISA (成長)": "attack",
-      "NISA (つみたて)": "side"
+    "_comment": "scripts/import_sbi_history.py（SBI証券の約定履歴CSV取り込み）用の設定。frame_map は預り区分→NISAの枠（growth=成長投資枠、tsumitate=つみたて投資枠）。fund_keywords は銘柄名（全角→半角に正規化後）に含まれるキーワード→資産ID。ticker_map は米国株の銘柄コード→資産ID（米国株のNISAは成長投資枠）。child_funds は子供用の別会計（account=child）。カード積立かどうかは monthly_schedule.card の設定との一致で判定する。",
+    "frame_map": {
+      "NISA (成長)": "growth",
+      "NISA (つみたて)": "tsumitate"
     },
     "fund_keywords": {
       "orkan": [
@@ -274,191 +258,174 @@
         "ニッセイNASDAQ100"
       ]
     },
+    "ticker_map": {
+      "NVDA": "nvda",
+      "TSLA": "tesla"
+    },
+    "child_funds": [
+      "newnisa_orkan"
+    ],
     "attack_category_rules": {
-      "_comment": "攻撃フェーズ（成長投資枠・現金）の約定の区分を日付から推定する規則（--include-attack時）。初回購入日→initial_category、毎月の積立の約定日（発注は毎月23日、約定は25日前後）がrecurring_day_rangeに入れば→recurring_category、それ以外→default。Tier1〜3の約定は自動判定できないため、必要ならpurchase_history.jsonのcategoryを手動で書き換える",
+      "_comment": "原資から出した約定（成長投資枠・現金・手動買付）の区分を日付から推定する規則。初回購入日→initial_category、毎月の積立日（発注は毎月23日、約定は25日前後）が recurring_day_range に入れば→recurring_category、それ以外→default。Tier到達時の買付などは必要なら purchase_history.json の category を手動で書き換える",
       "initial_purchase_date": "2026-07-07",
       "initial_category": "①分",
       "recurring_category": "定期積立",
-      "default": "未分類",
+      "default": "追加買付",
       "recurring_day_range": [
         23,
         27
       ]
-    },
-    "side_fixed_amounts": {
-      "_comment": "別枠積立（クレジットカード払い）の毎月の固定金額（円）。CSVに決済方法の列がなく、Tracersの別枠積立は預り区分が成長投資枠のため、銘柄ごとの金額で別枠積立と判定する。積立金額を変えたらここも更新する",
-      "orkan": [
-        30000
-      ],
-      "tracers": [
-        20000
-      ]
-    },
-    "side_funds": [
-      "nasdaq100"
-    ]
+    }
   },
   "long_term_portfolio": {
-    "_comment": "長期ポートフォリオの統合ビュー。保有している全ファンド（攻撃フェーズ＋別枠積立＋旧つみたてNISA）の評価額を合算した「全体」に対する割合を表示する（表示専用でTier判定・LINE通知には使わない）。holdingsのfund_idはpurchase_history.jsonのキー、accountはattack（攻撃フェーズ=成長投資枠）／side（別枠積立=つみたて投資枠）／legacy（旧つみたてNISA。できる限り保持する）。評価額=保有口数×現在の基準価額。roleはcore/satellite。サテライト比率=satelliteグループの合計÷全体（全グループの合計）。グループの割合（例: S&P500比率）も同じく÷全体。2028年月初のリバランス判断に使う（判定・売却の自動化はしない）。はじめてのNISA（子供用の別枠）・テスラは含めない",
-    "enabled": true,
-    "satellite_target_percent": 20,
-    "share_review": {
-      "_comment": "維持判断ルール（比率ベース）。group_idのグループが全体に占める割合がthreshold_percentを超えたら「見直し検討」と表示する（表示のみ・自動売却なし）。threshold_percentは投資判断のためユーザーが決める数値で、未設定（null）の間は「基準の数値が未設定」と表示する。現在の50%は暫定値（S&P500の割合が高い現状から、サテライト・オルカンが今後増えていく割合の目安）",
-      "enabled": true,
-      "group_id": "sp500",
-      "threshold_percent": 50,
-      "note": "基準50%は暫定値（S&P500の割合が高い現状から、サテライト・オルカンが今後増える割合の目安）。旧つみたてNISA分は非課税枠が復活しないため、できる限り保持する方針"
-    },
-    "groups": [
-      {
-        "id": "tracers",
-        "label": "Tracers（Top10）",
-        "role": "satellite",
-        "holdings": [
-          {
-            "fund_id": "tracers",
-            "account": "attack"
-          },
-          {
-            "fund_id": "tracers",
-            "account": "side"
-          }
-        ]
-      },
-      {
-        "id": "sox",
-        "label": "SOX",
-        "role": "satellite",
-        "holdings": [
-          {
-            "fund_id": "sox",
-            "account": "attack"
-          }
-        ]
-      },
-      {
-        "id": "sp500",
-        "label": "S&P500",
-        "role": "core",
-        "holdings": [
-          {
-            "fund_id": "sp500",
-            "account": "attack"
-          },
-          {
-            "fund_id": "sbi_v_sp500",
-            "account": "side"
-          },
-          {
-            "fund_id": "sbi_v_sp500",
-            "account": "legacy"
-          }
-        ]
-      },
-      {
-        "id": "orkan",
-        "label": "オルカン",
-        "role": "core",
-        "holdings": [
-          {
-            "fund_id": "orkan",
-            "account": "attack"
-          },
-          {
-            "fund_id": "orkan",
-            "account": "side"
-          }
-        ]
-      },
-      {
-        "id": "fang",
-        "label": "FANG+",
-        "role": "satellite",
-        "holdings": [
-          {
-            "fund_id": "fang",
-            "account": "attack"
-          }
-        ]
-      },
-      {
-        "id": "nasdaq100",
-        "label": "NASDAQ100",
-        "role": "satellite",
-        "holdings": [
-          {
-            "fund_id": "nasdaq100",
-            "account": "side"
-          }
-        ]
-      }
-    ],
-    "satellite_limit_percent": 25
+    "_comment": "長期ポートフォリオ（保有資産の合算）の表示。比率は約定履歴（purchase_history.json）の口数×現在値から算出する（表示のみ。目標・上限は置かない）。コア（role=core: オルカン・S&P500系）以外はサテライト（role=satellite）。role=separate（はじめてのNISA＝子供用の別会計）は比率の分母に含めず別枠で表示する。旧つみたてNISA（account=legacy）は保有に含める",
+    "enabled": true
   },
   "monthly_schedule": {
-    "_comment": "毎月の積立設定（SBI証券。2026-09-25のスクリーンショットより）。ダッシュボードの「毎月の運用手順」に表示するだけで、判定・通知には使わない。積立設定を変更したらここも更新する。別枠積立＝クレジットカード払い、攻撃フェーズ＝現金（成長投資枠）。execution_dayは約定日の目安（約定履歴の実績。約定は発注の1〜3営業日後）。別枠積立（side）はphases（from=発注日以降に有効）で期間ごとの構成を持ち、ダッシュボードは当日に有効な構成と次の構成の予告を表示する（2026-11-09発注分からオルカン10,000円・Tracers20,000円・NASDAQ100 20,000円）",
-    "attack": {
-      "label": "攻撃フェーズの毎月積立",
+    "_comment": "毎月の積立設定（SBI証券の積立設定画面・約定履歴が根拠）。ダッシュボードの「毎月の運用手順」に表示し、約定履歴の取り込み（import_sbi_history.py）がカード積立と手動買付を見分けるのにも使う（card の銘柄・金額・枠が約定日に有効な設定と一致→カード積立）。phases の from は発注日（その日以降の発注分から有効）。積立設定を変更したらここも更新する。execution_day は約定日の目安。",
+    "cash": {
+      "label": "現金積立",
       "order_day": 23,
       "payment": "現金・NISA（成長）",
-      "items": [
-        {
-          "fund": "Tracers",
-          "amount": 21765
-        },
-        {
-          "fund": "SOX",
-          "amount": 14706
-        },
-        {
-          "fund": "eMAXIS Slim 米国株式（S&P500）",
-          "amount": 11765
-        },
-        {
-          "fund": "eMAXIS Slim 全世界株式（オルカン）",
-          "amount": 10588
-        }
-      ],
-      "execution_day": 25
-    },
-    "side": {
-      "label": "別枠積立",
-      "order_day": 9,
-      "payment": "クレジットカード",
-      "execution_day": 10,
+      "execution_day": 25,
       "phases": [
         {
-          "from": "2026-09-01",
+          "from": "2026-08-01",
           "items": [
             {
-              "fund": "eMAXIS Slim 全世界株式（オルカン）",
-              "amount": 30000,
-              "account_label": "NISA（つみたて）"
+              "fund": "Tracers",
+              "fund_id": "tracers",
+              "amount": 21765,
+              "frame": "growth",
+              "account_label": "NISA（成長）"
             },
             {
-              "fund": "Tracers",
-              "amount": 20000,
+              "fund": "SOX",
+              "fund_id": "sox",
+              "amount": 14706,
+              "frame": "growth",
+              "account_label": "NISA（成長）"
+            },
+            {
+              "fund": "eMAXIS Slim 米国株式（S&P500）",
+              "fund_id": "sp500",
+              "amount": 11765,
+              "frame": "growth",
+              "account_label": "NISA（成長）"
+            },
+            {
+              "fund": "eMAXIS Slim 全世界株式（オルカン）",
+              "fund_id": "orkan",
+              "amount": 10588,
+              "frame": "growth",
               "account_label": "NISA（成長）"
             }
           ]
         },
         {
-          "from": "2026-11-09",
-          "note": "11/9発注（11/10約定）分から",
+          "from": "2026-11-23",
+          "note": "11/23発注（約定は11/25の見込み）分から",
+          "items": [
+            {
+              "fund": "NASDAQ100",
+              "fund_id": "nasdaq100",
+              "amount": 30000,
+              "frame": "growth",
+              "account_label": "NISA（成長）"
+            },
+            {
+              "fund": "Tracers",
+              "fund_id": "tracers",
+              "amount": 28824,
+              "frame": "growth",
+              "account_label": "NISA（成長）"
+            }
+          ]
+        }
+      ]
+    },
+    "card": {
+      "label": "クレカ積立",
+      "order_day": 10,
+      "payment": "クレジットカード",
+      "execution_day": 11,
+      "phases": [
+        {
+          "from": "2026-02-01",
           "items": [
             {
               "fund": "eMAXIS Slim 全世界株式（オルカン）",
+              "fund_id": "orkan",
               "amount": 10000,
+              "frame": "tsumitate",
+              "account_label": "NISA（つみたて）"
+            },
+            {
+              "fund": "NASDAQ100",
+              "fund_id": "nasdaq100",
+              "amount": 10000,
+              "frame": "growth",
+              "account_label": "NISA（成長）"
+            },
+            {
+              "fund": "SBI・V・S&P500",
+              "fund_id": "sbi_v_sp500",
+              "amount": 10000,
+              "frame": "tsumitate",
+              "account_label": "NISA（つみたて）"
+            }
+          ]
+        },
+        {
+          "from": "2026-11-07",
+          "note": "11/7発注（11/10〜11約定）分から。12/10の発注もこの構成",
+          "items": [
+            {
+              "fund": "eMAXIS Slim 全世界株式（オルカン）",
+              "fund_id": "orkan",
+              "amount": 10000,
+              "frame": "tsumitate",
               "account_label": "NISA（つみたて）"
             },
             {
               "fund": "Tracers",
+              "fund_id": "tracers",
               "amount": 20000,
+              "frame": "growth",
               "account_label": "NISA（成長）"
             },
             {
               "fund": "NASDAQ100",
+              "fund_id": "nasdaq100",
               "amount": 20000,
+              "frame": "growth",
+              "account_label": "NISA（成長）"
+            }
+          ]
+        },
+        {
+          "from": "2027-01-10",
+          "note": "2027/1/10発注分から（SBIの積立設定画面。次回発注予定日が2027/1/10）",
+          "items": [
+            {
+              "fund": "eMAXIS Slim 全世界株式（オルカン）",
+              "fund_id": "orkan",
+              "amount": 30000,
+              "frame": "tsumitate",
+              "account_label": "NISA（つみたて）"
+            },
+            {
+              "fund": "eMAXIS Slim 米国株式（S&P500）",
+              "fund_id": "sp500",
+              "amount": 10000,
+              "frame": "tsumitate",
+              "account_label": "NISA（つみたて）"
+            },
+            {
+              "fund": "NASDAQ100",
+              "fund_id": "nasdaq100",
+              "amount": 10000,
+              "frame": "growth",
               "account_label": "NISA（成長）"
             }
           ]

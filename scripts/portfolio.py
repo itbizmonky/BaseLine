@@ -1,167 +1,114 @@
 """
 portfolio.py
 ============
-長期ポートフォリオ（攻撃フェーズ＋別枠積立＋旧つみたてNISA）の統合ビューを算出するモジュール。
+長期ポートフォリオ（保有資産の合算）の統合ビュー。表示専用の純粋関数（Tier判定・LINE通知には使わない）。
 
-保有している全ファンドの評価額を合算した「全体」に対する、各グループの割合を求める。
-
-    評価額         = 保有口数 × 現在の基準価額 ÷ 10,000
-    全体           = 全グループの評価額の合計
-    サテライト比率 = サテライトのグループの評価額の合計 ÷ 全体
-    グループ比率   = そのグループの評価額 ÷ 全体（例: S&P500比率）
-
-グループの role は core（コア）/ satellite（サテライト）。どのファンドをどのグループ・口座に含めるか、
-サテライト比率の目標、維持判断ルール（share_review）は config/settings.json の
-long_term_portfolio で定義する（銘柄IDをコードに固定しない）。
-
-購入実績（purchase_history.json）と現在の基準価額から計算するだけの表示専用の純粋関数で、
-Tier判定・BUY/WAIT判定・LINE通知には一切使用しない。
+- 評価額 = 保有口数（株数）× 現在値。保有口数は約定履歴（purchase_history.json）から集計する
+  （旧つみたてNISA=legacy も含める）。米国株は USD株価 × USD/JPY で円換算する
+- コア（role=core: オルカン・S&P500系）以外はサテライト（role=satellite）。目標・上限は置かない
+- role=separate（はじめてのNISA＝子供用の別会計）は比率の分母に含めず、別枠で返す
+- 現在値が取れない資産（または米国株でUSD/JPYが取れない場合）があると、その資産は missing に入り、
+  比率（share）は算出できないため None を返す（一部を除外した偽の比率を出さない）
 """
 
-from purchase_history import calc_average_cost, filter_by_account
+import logging
+
+from assets import ROLE_CORE, ROLE_SATELLITE, ROLE_SEPARATE, all_assets
+from purchase_history import asset_holdings
+
+logger = logging.getLogger(__name__)
+
+ACCOUNT_LABELS = {"attack": "原資買付", "side": "カード積立", "legacy": "旧NISA", "child": "子供用"}
 
 
-def _fund_names(settings: dict) -> dict:
-    """銘柄ID→表示名（funds と positions.items の short_name）。"""
-    names = {f["id"]: f.get("short_name", f["id"]) for f in settings.get("funds", [])}
-    for item in settings.get("positions", {}).get("items", []):
-        names.setdefault(item["id"], item.get("short_name", item["id"]))
-    return names
+def _asset_value(units: float, price: float | None, currency: str, usdjpy: float | None) -> float | None:
+    """評価額（円）。現在値（USDの場合は為替も）が無ければ None。"""
+    if price is None:
+        return None
+    if currency == "USD":
+        return units * price * usdjpy if usdjpy else None
+    return units * price / 10000
 
 
-def build_integrated_view(settings: dict, purchase_history: dict, prices: dict) -> dict | None:
+def build_integrated_view(
+    settings: dict,
+    purchase_history: dict,
+    prices: dict[str, float | None],
+    usdjpy: float | None = None,
+) -> dict | None:
     """
-    統合ビューを算出する。
+    保有資産の統合ビューを返す。enabled が false なら None。
 
     Args:
-        settings: config/settings.json の内容（long_term_portfolio を参照）
-        purchase_history: data/purchase_history.json の内容（銘柄ID→実績リスト）
-        prices: 銘柄ID→現在の基準価額（取得できない銘柄は None または欠落）
+        prices: {資産ID: 現在値}。投資信託は基準価額（円/1万口）、米国株は株価（USD）
+        usdjpy: USD/JPY（米国株の円換算用）
 
     Returns:
-        long_term_portfolio が未設定・無効の場合は None。それ以外は
         {
-          "groups": [{"id", "label", "role", "total_value": float|None, "share": float|None,
-                      "fund_names": [str],
-                      "holdings": [{"fund_id", "name", "account", "units", "value": float|None,
-                                    "avg_cost": float|None, "count", "excluded", "nav"}]}],
-          "total_value": float|None,          # 全グループの合計。基準価額が欠けると None
-          "satellite_value": float|None,
-          "satellite_ratio": float|None,      # %。サテライト÷全体
-          "target_percent": float, "limit_percent": float|None, "diff_pt": float|None,
-          "satellite_status": "within_target"|"over_target"|"over_limit"|None,
-          "satellite_names": [str],           # サテライトに含まれるグループ名
-          "share_review": {"label", "fund_names", "value", "share", "threshold_percent",
-                           "status": "keep"|"review"|"unset"|None, "note"} | None,
-          "provisional": str|None,
+          "rows": [{"id","short_name","role","color","currency","units","price","value","share","accounts"}...]  # 評価額の大きい順（非別枠）
+          "total_value": 全体の評価額（別枠を除く）| None,
+          "core_value", "core_share", "satellite_value", "satellite_share",
+          "separate": [{"id","short_name","value","units","price"}...],  # 別会計（子供用）
+          "missing": [現在値または為替が取れず評価できない資産のshort_name...],
         }
     """
-    cfg = settings.get("long_term_portfolio")
-    if not cfg or not cfg.get("enabled", True):
+    cfg = settings.get("long_term_portfolio") or {}
+    if not cfg.get("enabled", True):
         return None
 
-    names = _fund_names(settings)
-    groups = []
-    for g in cfg.get("groups", []):
-        holdings = []
-        group_total = 0.0
-        group_ok = True
-        for h in g.get("holdings", []):
-            fund_id, account = h["fund_id"], h["account"]
-            records = filter_by_account(purchase_history.get(fund_id, []), account)
-            avg = calc_average_cost(records)
-            nav = prices.get(fund_id)
-            if avg is None:
-                # 実績がなければ保有なし（評価額0円）として扱う
-                units, value = 0.0, 0.0
-            elif nav is None:
-                # 保有はあるが現在の基準価額が得られない → 誤った合計を出さないため算出不可
-                units, value = avg["total_units"], None
-                group_ok = False
-            else:
-                units = avg["total_units"]
-                value = units * nav / 10000
-            if value is not None:
-                group_total += value
-            holdings.append({
-                "fund_id": fund_id,
-                "name": names.get(fund_id, fund_id),
-                "account": account,
-                "units": units,
-                "value": value,
-                "avg_cost": avg["avg_cost"] if avg else None,
-                "count": avg["count"] if avg else 0,
-                "excluded": len(records) - (avg["count"] if avg else 0),
-                "nav": nav,
-            })
-        fund_names = []
-        for h in holdings:
-            if h["name"] not in fund_names:
-                fund_names.append(h["name"])
-        groups.append({
-            "id": g["id"],
-            "label": g.get("label", g["id"]),
-            "role": g.get("role", "core"),
-            "total_value": group_total if group_ok else None,
-            "fund_names": fund_names,
-            "holdings": holdings,
-        })
-
-    calculable = all(g["total_value"] is not None for g in groups)
-    total = sum(g["total_value"] for g in groups) if calculable else None
-    for g in groups:
-        g["share"] = g["total_value"] / total * 100 if calculable and total and total > 0 else None
-
-    target = float(cfg.get("satellite_target_percent", 20))
-    limit = cfg.get("satellite_limit_percent")
-    satellites = [g for g in groups if g["role"] == "satellite"]
-    satellite = sum(g["total_value"] for g in satellites) if calculable else None
-    ratio = satellite / total * 100 if calculable and total and total > 0 else None
-    if ratio is None:
-        sat_status = None
-    elif limit is not None and ratio > limit:
-        sat_status = "over_limit"
-    elif ratio > target:
-        sat_status = "over_target"
-    else:
-        sat_status = "within_target"
-
-    # 維持判断ルール（比率ベース）: 指定グループが全体に占める割合が、基準（ユーザーが事前に決めた数値）を
-    # 超えたら「見直し検討」。数値が未設定なら "unset"。表示専用で、売却等の自動実行はしない。
-    share_review = None
-    review_cfg = cfg.get("share_review")
-    if review_cfg and review_cfg.get("enabled", True):
-        grp = next((g for g in groups if g["id"] == review_cfg.get("group_id")), None)
-        thr = review_cfg.get("threshold_percent")
-        share = grp["share"] if grp else None
-        if share is None:
-            status = None
-        elif thr is None:
-            status = "unset"
-        else:
-            status = "review" if share > thr else "keep"
-        share_review = {
-            "label": grp["label"] if grp else review_cfg.get("group_id"),
-            "fund_names": grp["fund_names"] if grp else [],
-            "value": grp["total_value"] if grp else None,
-            "share": share,
-            "threshold_percent": thr,
-            "status": status,
-            "note": review_cfg.get("note"),
+    rows, separate, missing = [], [], []
+    for asset in all_assets(settings):
+        records = purchase_history.get(asset["id"], [])
+        holdings = asset_holdings(records)
+        if holdings["total_units"] <= 0:
+            continue
+        price = prices.get(asset["id"])
+        value = _asset_value(holdings["total_units"], price, asset["currency"], usdjpy)
+        accounts = []
+        for acc, h in sorted(holdings["by_account"].items()):
+            acc_value = _asset_value(h["units"], price, asset["currency"], usdjpy)
+            accounts.append({"account": acc, "label": ACCOUNT_LABELS.get(acc, acc), "units": h["units"], "value": acc_value})
+        row = {
+            "id": asset["id"],
+            "short_name": asset["short_name"],
+            "role": asset["role"],
+            "color": asset["color"],
+            "currency": asset["currency"],
+            "units": holdings["total_units"],
+            "price": price,
+            "value": value,
+            "accounts": accounts,
         }
+        if asset["role"] == ROLE_SEPARATE:
+            separate.append(row)
+            continue
+        if value is None:
+            missing.append(asset["short_name"])
+        rows.append(row)
 
+    complete = not missing
+    total = sum(r["value"] for r in rows) if complete else None
+    for r in rows:
+        r["share"] = (r["value"] / total * 100) if total else None
+    rows.sort(key=lambda r: r["value"] if r["value"] is not None else -1, reverse=True)
+
+    def share_of(role: str) -> tuple[float | None, float | None]:
+        if not complete:
+            return None, None
+        value = sum(r["value"] for r in rows if r["role"] == role)
+        return value, (value / total * 100 if total else None)
+
+    core_value, core_share = share_of(ROLE_CORE)
+    sat_value, sat_share = share_of(ROLE_SATELLITE)
     return {
-        "groups": groups,
+        "rows": rows,
         "total_value": total,
-        "satellite_value": satellite,
-        "satellite_ratio": ratio,
-        "satellite_names": [g["label"] for g in satellites],
-        "target_percent": target,
-        "limit_percent": float(limit) if limit is not None else None,
-        "satellite_status": sat_status,
-        "diff_pt": ratio - target if ratio is not None else None,
-        "share_review": share_review,
-        "provisional": cfg.get("provisional_note"),
+        "core_value": core_value,
+        "core_share": core_share,
+        "satellite_value": sat_value,
+        "satellite_share": sat_share,
+        "separate": separate,
+        "missing": missing,
     }
 
 
@@ -169,9 +116,9 @@ if __name__ == "__main__":
     import json
     from pathlib import Path
 
-    from purchase_history import load_purchase_history
-
     root = Path(__file__).parent.parent
-    settings = json.load(open(root / "config" / "settings.json", encoding="utf-8"))
-    view = build_integrated_view(settings, load_purchase_history(), {})
-    print(json.dumps(view, ensure_ascii=False, indent=2))
+    settings = json.loads((root / "config" / "settings.json").read_text(encoding="utf-8"))
+    history = json.loads((root / "data" / "purchase_history.json").read_text(encoding="utf-8"))
+    print("現在値を渡さずに呼ぶと全体は算出不可（missing に資産名）:")
+    view = build_integrated_view(settings, history, {})
+    print(" ", view["total_value"], view["missing"])

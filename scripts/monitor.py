@@ -8,17 +8,17 @@ GitHub Actions から毎日実行されるスクリプト。
 
 実行フロー:
   1. 設定ファイル読み込み
-  2. 基準価額取得（fetch_nav.py）
+  2. 基準価額取得（fetch_nav.py。投資信託）・米国株の株価取得（positions.py）
   3. 取得失敗チェック → 失敗があればLINE通知
-  4. 設定来高値の更新（judge.py）
-  5. 下落率計算・Tier判定（judge.py）
-  6. 新規Tier到達があればLINE通知（notify.py）
-  7. 履歴CSV・高値JSON・発動済JSON保存
-  8. HTMLダッシュボード生成（generate_dashboard.py）
+  4. 設定来高値の更新（judge.py。資産ごとの起点日以降）
+  5. 全保有資産の下落率（最高値比）・Tier・平均取得単価比の計算
+  6. alert 対象の資産で新しいTierに到達したらLINE通知（購入額・BUY表示は出さない「下落の気づき」）
+  7. 日次サマリー通知（全保有資産の最高値比・平均取得単価比）
+  8. 履歴CSV・高値JSON・通知済みTier保存
+  9. HTMLダッシュボード生成（generate_dashboard.py）
 """
 
 import argparse
-import json
 import logging
 import sys
 from datetime import datetime, timedelta, timezone
@@ -30,6 +30,7 @@ JST = timezone(timedelta(hours=9))
 # スクリプトディレクトリをパスに追加
 sys.path.insert(0, str(Path(__file__).parent))
 
+from assets import KIND_FUND, all_assets, stock_assets
 from fetch_nav import fetch_all_nav, load_settings
 from market_data import (
     fetch_all_market_data, load_market, save_market, update_market,
@@ -38,20 +39,16 @@ from market_data import (
 from positions import (
     fetch_all_positions, load_positions, save_positions, update_positions,
     load_positions_history, append_positions_history,
-    calc_gain_loss_ratio, judge_gain_loss_level,
 )
-from purchase_history import (
-    calc_gain_vs_average, filter_by_accounts, fund_cost_accounts,
-    load_purchase_history, position_purchases, resolve_cost_basis,
-)
+from purchase_history import calc_gain_vs_average, cost_records, load_purchase_history, purchase_markers
 from judge import (
     load_peak, save_peak,
     load_triggered, save_triggered,
     load_history, append_history,
     update_peak,
-    calc_drawdown, judge_tier, calc_baseline_ratio, format_baseline_ratio, judge_decision,
-    is_new_trigger, record_trigger, update_recovery_status,
-    detect_period, calc_trend, calc_remaining_funds,
+    calc_drawdown, judge_tier, calc_baseline_ratio, format_baseline_ratio,
+    is_new_trigger, record_notified, rearm_if_recovered, calc_trend,
+    DEFAULT_REARM_RATIO,
 )
 from notify import notify_tier_reached, notify_fetch_error, notify_daily_summary
 from generate_dashboard import generate
@@ -103,7 +100,7 @@ def sync_github_workflow(settings: dict) -> None:
         import re
         pattern = r"- cron:\s*['\"].*?['\"]"
         replacement = f"- cron: '{cron_utc}'"
-        
+
         new_content, count = re.subn(pattern, replacement, content)
         if count > 0 and new_content != content:
             workflow_path.write_text(new_content, encoding="utf-8")
@@ -115,47 +112,8 @@ def sync_github_workflow(settings: dict) -> None:
         logger.error(f"Failed to sync workflow file: {e}")
 
 
-def main(dry_run: bool = False) -> None:
-    """
-    メイン実行関数。
-
-    Args:
-        dry_run: True の場合、LINE通知をスキップする（テスト用）
-    """
-    today = datetime.now(JST).date()
-    today_str = today.strftime("%Y-%m-%d")
-    logger.info(f"=== 暴落監視 開始: {today_str} (JST) {'[DRY RUN]' if dry_run else ''} ===")
-
-    # 土日は投信の基準価額が更新されないため、本番実行時はスキップする
-    # （--dry-run はダッシュボード確認用に平日以外でも実行できるようにする）
-    if not dry_run and today.weekday() >= 5:
-        logger.info(f"{today_str} はJST基準で土日のため、監視処理をスキップします。")
-        return
-
-    # ----------------------------------------------------------
-    # 1. 設定読み込み
-    # ----------------------------------------------------------
-    settings = load_settings()
-    sync_github_workflow(settings)
-    
-    funds = settings["funds"]
-    dashboard_url = settings.get("dashboard_url", "https://itbizmonky.github.io/BaseLine/")
-    notifications_enabled = settings.get("notification", {}).get("enabled", True)
-    retry_count = settings["notification"]["retry_count"]
-    retry_interval = settings["notification"]["retry_interval_sec"]
-
-    # ----------------------------------------------------------
-    # 2. 基準価額取得
-    # ----------------------------------------------------------
-    logger.info("基準価額を取得中...")
-    navs = fetch_all_nav(
-        retry_count=retry_count,
-        retry_interval=retry_interval if not dry_run else 1,
-    )
-
-    # ----------------------------------------------------------
-    # 2.5 市場心理指標の取得（参考情報。Tier判定・通知には一切影響させない）
-    # ----------------------------------------------------------
+def fetch_market(settings: dict, today_str: str) -> dict:
+    """市場心理指標（参考情報）を取得し、ダッシュボード表示用の辞書を返す。失敗しても処理は止めない。"""
     market_display = {}
     try:
         market_settings = settings.get("market_indicators", {})
@@ -197,222 +155,194 @@ def main(dry_run: bool = False) -> None:
     except Exception as e:
         # 参考情報の取得失敗でTier判定・通知が止まらないよう、例外を握りつぶす
         logger.warning(f"市場心理指標の取得中にエラーが発生しましたが処理を続行します: {e}")
+    return market_display
 
-    # ----------------------------------------------------------
-    # 2.6 保有ポジションの取得（Tier投資対象外の監視専用銘柄。Tier判定・通知には一切影響させない）
-    # ----------------------------------------------------------
-    positions_display = {}
+
+def fetch_stocks(settings: dict, today_str: str, usdjpy: float | None) -> tuple[dict, dict]:
+    """
+    米国個別株の株価を取得し、(取得できた株価 {資産ID: USD}, 表示用 quotes) を返す。
+    取得に失敗した株は前回値（stale=True）を quotes に入れる。失敗しても処理は止めない。
+    quotes: {資産ID: {"value": float, "date": str, "stale": bool}}
+    """
+    fresh, quotes = {}, {}
+    stocks = stock_assets(settings)
+    if not stocks:
+        return fresh, quotes
     try:
-        positions_settings = settings.get("positions", {})
-        if positions_settings.get("enabled", True):
-            items = positions_settings.get("items", [])
-            position_ids = [item["id"] for item in items]
-            gain_loss_thresholds = positions_settings.get("gain_loss_thresholds")
-            usdjpy_rate = market_display.get("usdjpy", {}).get("value")
-
-            old_positions = load_positions()
-            fetched_positions = fetch_all_positions(settings)
-            purchase_records = load_purchase_history()
-
-            for item in items:
-                pid = item["id"]
-                # 約定実績があれば複数回購入の平均取得単価を優先（なければ settings の cost_basis）
-                cost_basis = resolve_cost_basis(item.get("cost_basis", 0), purchase_records.get(pid, []))
-                currency = item.get("currency", "JPY")
-
-                cur_value = fetched_positions.get(pid)
-                if cur_value is None and pid in old_positions:
-                    cur_value = old_positions[pid]["value"]
-                    record_date = old_positions[pid]["date"]
-                else:
-                    record_date = today_str
-
-                if cur_value is None:
-                    continue
-
-                ratio = calc_gain_loss_ratio(cur_value, cost_basis)
-                value_jpy = cur_value * usdjpy_rate if currency == "USD" and usdjpy_rate else cur_value
-
-                positions_display[pid] = {
-                    "name": item.get("name", pid),
-                    "short_name": item.get("short_name", pid),
-                    "value": cur_value,
-                    "value_jpy": value_jpy,
-                    "cost_basis": cost_basis,
-                    "currency": currency,
-                    "date": record_date,
-                    "ratio": ratio,
-                    "level": judge_gain_loss_level(ratio, gain_loss_thresholds),
-                    "color": item.get("color", "#94a3b8"),
-                    "purchases": position_purchases(item, purchase_records.get(pid, [])),
-                    "hidden": bool(item.get("hidden", False)),
-                }
-
-            new_positions = update_positions(old_positions, fetched_positions, today_str)
-            save_positions(new_positions)
-            append_positions_history(today_str, fetched_positions, position_ids)
-            logger.info(f"保有ポジション: {fetched_positions}")
+        old_positions = load_positions()
+        fetched = fetch_all_positions(settings)
+        for s in stocks:
+            sid = s["id"]
+            if fetched.get(sid) is not None:
+                fresh[sid] = fetched[sid]
+                quotes[sid] = {"value": fetched[sid], "date": today_str, "stale": False}
+            elif sid in old_positions:
+                quotes[sid] = {"value": old_positions[sid]["value"], "date": old_positions[sid]["date"], "stale": True}
+        save_positions(update_positions(old_positions, fetched, today_str))
+        append_positions_history(today_str, {**fetched, "usdjpy": usdjpy}, [s["id"] for s in stocks] + ["usdjpy"])
+        logger.info(f"米国株: {fetched}")
     except Exception as e:
-        # 参考情報の取得失敗でTier判定・通知が止まらないよう、例外を握りつぶす
-        logger.warning(f"保有ポジションの取得中にエラーが発生しましたが処理を続行します: {e}")
+        # 米国株の取得失敗で投資信託のTier判定・通知が止まらないよう、例外を握りつぶす
+        logger.warning(f"米国株の取得中にエラーが発生しましたが処理を続行します: {e}")
+    return fresh, quotes
+
+
+def main(dry_run: bool = False) -> None:
+    """
+    メイン実行関数。
+
+    Args:
+        dry_run: True の場合、LINE通知をスキップする（テスト用）
+    """
+    today = datetime.now(JST).date()
+    today_str = today.strftime("%Y-%m-%d")
+    logger.info(f"=== 暴落監視 開始: {today_str} (JST) {'[DRY RUN]' if dry_run else ''} ===")
+
+    # 土日は投信の基準価額が更新されないため、本番実行時はスキップする
+    # （--dry-run はダッシュボード確認用に平日以外でも実行できるようにする）
+    if not dry_run and today.weekday() >= 5:
+        logger.info(f"{today_str} はJST基準で土日のため、監視処理をスキップします。")
+        return
+
+    # ----------------------------------------------------------
+    # 1. 設定読み込み
+    # ----------------------------------------------------------
+    settings = load_settings()
+    sync_github_workflow(settings)
+
+    assets = all_assets(settings)
+    dashboard_url = settings.get("dashboard_url", "https://itbizmonky.github.io/BaseLine/")
+    notifications_enabled = settings.get("notification", {}).get("enabled", True)
+    retry_count = settings["notification"]["retry_count"]
+    retry_interval = settings["notification"]["retry_interval_sec"]
+    rearm_ratio = settings.get("alert", {}).get("rearm_ratio", DEFAULT_REARM_RATIO)
+
+    # ----------------------------------------------------------
+    # 2. 基準価額取得（投資信託）・市場心理・米国株（参考情報・米国株は取得失敗しても止めない）
+    # ----------------------------------------------------------
+    logger.info("基準価額を取得中...")
+    navs = fetch_all_nav(
+        retry_count=retry_count,
+        retry_interval=retry_interval if not dry_run else 1,
+    )
+    market_display = fetch_market(settings, today_str)
+    fresh_stocks, quotes = fetch_stocks(settings, today_str, market_display.get("usdjpy", {}).get("value"))
 
     # ----------------------------------------------------------
     # 3. 取得失敗チェック
     # ----------------------------------------------------------
-    # 新規購入停止銘柄（active=false）は通知対象外。取得・表示は継続する
-    inactive_ids = {f["id"] for f in funds if not f.get("active", True)}
-    failed_funds = [fid for fid, nav in navs.items() if nav is None]
-    if failed_funds:
-        failed_names = [
-            next((f["short_name"] for f in funds if f["id"] == fid), fid)
-            for fid in failed_funds
-        ]
-        logger.warning(f"取得失敗ファンド: {failed_names}")
-        notify_failed_names = [
-            next((f["short_name"] for f in funds if f["id"] == fid), fid)
-            for fid in failed_funds
-            if fid not in inactive_ids
-        ]
-        if notify_failed_names and not dry_run and notifications_enabled:
-            notify_fetch_error(notify_failed_names, today_str, dashboard_url)
+    failed_ids = [fid for fid, nav in navs.items() if nav is None]
+    failed_ids += [s["id"] for s in stock_assets(settings) if s["id"] not in fresh_stocks]
+    if failed_ids:
+        names = {a["id"]: a["short_name"] for a in assets}
+        failed_names = [names.get(fid, fid) for fid in failed_ids]
+        logger.warning(f"取得失敗: {failed_names}")
+        if not dry_run and notifications_enabled:
+            notify_fetch_error(failed_names, today_str, dashboard_url)
 
-    # 全銘柄失敗の場合は終了
+    # 全ファンド失敗の場合は終了
     if all(v is None for v in navs.values()):
         logger.error("全銘柄の取得に失敗しました。処理を終了します。")
         sys.exit(1)
 
     # ----------------------------------------------------------
-    # 4. 設定来高値の更新
+    # 4. 設定来高値の更新（資産ごとの起点日以降。履歴に無い期間は約定単価も参考にする）
     # ----------------------------------------------------------
     peak = load_peak()
     peak_start = settings.get("peak_start_date", "2026-08-01")
     history = load_history()
+    positions_history = load_positions_history()
     baseline = settings.get("baseline", {})
-    peak, updated_ids = update_peak(peak, navs, today_str, peak_start, history, baseline)
+    purchases = load_purchase_history()
+    extra_points = {
+        aid: [(m["date"], m["price"]) for m in purchase_markers(records)]
+        for aid, records in purchases.items()
+    }
+    peak, _ = update_peak(peak, {**navs, **fresh_stocks}, today_str, peak_start,
+                          history + positions_history, baseline, extra_points)
 
     # ----------------------------------------------------------
-    # 5. 期間判定
+    # 5. 全保有資産の下落率・Tier・平均取得単価比・（alert対象のみ）通知
     # ----------------------------------------------------------
-    period_info = detect_period(today, settings)
-    logger.info(f"現在期間: {period_info['label']} / 残{period_info['days_remaining']}日")
+    alert_ids = {a["id"] for a in assets if a["alert"]}
+    triggered = {k: v for k, v in load_triggered().items() if k in alert_ids}
+    results = []
+    baseline_prices = baseline.get("prices", {})
 
-    # ----------------------------------------------------------
-    # 6. 下落率計算・Tier判定・通知
-    # ----------------------------------------------------------
-    triggered = load_triggered()
-    fund_results = []
-    all_purchases = load_purchase_history()
+    for asset in assets:
+        aid = asset["id"]
+        if asset["kind"] == KIND_FUND:
+            price = navs.get(aid)
+            price_date, stale = today_str, False
+            trend_rows = history
+        else:
+            quote = quotes.get(aid) or {}
+            price = quote.get("value")
+            price_date, stale = quote.get("date", today_str), bool(quote.get("stale"))
+            trend_rows = positions_history
 
-    def avg_cost_ratio(fund: dict, nav: float | None) -> float | None:
-        """平均取得単価（銘柄ごとの対象口座。既定は攻撃フェーズ）に対する現在の基準価額の損益率（%）。実績なしはNone。"""
-        records = filter_by_accounts(all_purchases.get(fund["id"], []), fund_cost_accounts(fund))
-        return calc_gain_vs_average(records, nav)
+        peak_info = peak.get(aid, {})
+        peak_val = peak_info.get("value")
+        baseline_price = baseline_prices.get(aid)
 
-    for fund in funds:
-        fid = fund["id"]
-        nav = navs.get(fid)
-        if nav is None:
-            fund_results.append({
-                "fund_id": fid,
-                "short_name": fund["short_name"],
-                "tier": 0,
-                "drawdown": 0.0,
-                "trend_5d": "→",
-                "trend_20d": "→",
-                "avg_cost_ratio": None,
-                "inactive_label": fund.get("inactive_label"),
-                "active": fund.get("active", True),
-                **({} if fund.get("active", True) else {"decision": "INACTIVE"}),
-            })
+        result = {
+            "asset_id": aid,
+            "name": asset["name"],
+            "short_name": asset["short_name"],
+            "kind": asset["kind"],
+            "currency": asset["currency"],
+            "role": asset["role"],
+            "color": asset["color"],
+            "alert": asset["alert"],
+            "thresholds": asset["tiers"],
+            "price": price,
+            "price_date": price_date,
+            "stale": stale,
+            "peak_value": peak_val,
+            "peak_date": peak_info.get("date"),
+            "baseline_price": baseline_price,
+            "drawdown": None,
+            "tier": 0,
+            "baseline_ratio": None,
+            "avg_cost_ratio": None,
+            "trend_5d": calc_trend(trend_rows, aid, days=5),
+            "trend_20d": calc_trend(trend_rows, aid, days=20),
+        }
+        if price is None or peak_val is None:
+            results.append(result)
             continue
 
-        peak_info = peak.get(fid, {})
-        peak_val = peak_info.get("value")
-        # 監視開始前（peak_start未到達）は高値が記録されないため未計測として扱う。
-        # 監視開始後は上記update_peak()で初回シード（history.csv遡り確認込み）済みのため
-        # ここで改めて仮登録する必要はない。
-
-        # 下落率・Tier判定（監視開始前で高値未記録の場合は0扱い）
-        if peak_val is None:
-            drawdown = 0.0
-            tier = 0
-        else:
-            drawdown = calc_drawdown(nav, peak_val)
-            tier = judge_tier(drawdown, fund.get("tiers") or [])
-
-        # 基準日比・購入判定（基準日価格が未設定の銘柄は基準日比を算出せずNone＝表示は「-」）
-        active = fund.get("active", True)
-        baseline_nav = settings.get("baseline", {}).get("prices", {}).get(fid, 0)
-        tolerance_pct = settings.get("baseline", {}).get("initial_price_tolerance_percent", 5.0)
-        baseline_ratio = calc_baseline_ratio(nav, baseline_nav) if baseline_nav > 0 else None
-        is_hwm = (peak_val is not None and drawdown == 0.0)
-        decision = judge_decision(tier, nav, baseline_nav, tolerance_pct, is_hwm)
-        if not active:
-            decision = "INACTIVE"
-
-        peak_val_str = f"{peak_val:,.0f}円" if peak_val is not None else "未記録"
+        drawdown = calc_drawdown(price, peak_val)
+        tier = judge_tier(drawdown, asset["tiers"])
+        avg_ratio = calc_gain_vs_average(cost_records(purchases.get(aid, [])), price)
+        result.update({
+            "drawdown": drawdown,
+            "tier": tier,
+            "baseline_ratio": calc_baseline_ratio(price, baseline_price) if baseline_price else None,
+            "avg_cost_ratio": avg_ratio,
+        })
+        results.append(result)
         logger.info(
-            f"{fund['short_name']}: NAV={nav:,.0f}円 / 高値={peak_val_str} / "
-            f"下落率={drawdown:.2f}% / 基準日比={format_baseline_ratio(baseline_ratio, 2)} / "
-            f"Tier={tier} / 判定={decision}"
+            f"{asset['short_name']}: 現在値={price:,.2f} / 高値={peak_val:,.2f} / 最高値比={drawdown:.2f}% / "
+            f"基準日比={format_baseline_ratio(result['baseline_ratio'], 2)} / Tier={tier}"
         )
 
-        # 新規購入停止銘柄は、Tier到達の通知・記録・回復判定のいずれも行わない
-        # （評価額把握のための表示のみ継続する）。
-        # 見送ったTierが回復した（現在のTierが記録より低い）かどうかを毎回更新する。
-        # これにより、回復後に再び同じTierへ到達した際に新規到達として再通知できる。
-        if active:
-            triggered = update_recovery_status(fid, tier, triggered)
-
-        # 新規Tier到達 → LINE通知
-        if active and is_new_trigger(fid, tier, triggered):
-            phase_key = period_info.get("phase", "phase2")
-            if phase_key not in ("phase2", "phase3"):
-                phase_key = "phase2"
-            remaining = calc_remaining_funds(fid, triggered, phase_key, settings)
-
-            if not dry_run and notifications_enabled:
-                notify_tier_reached(
-                    fund=fund,
-                    tier=tier,
-                    drawdown=drawdown,
-                    current_nav=nav,
-                    peak_nav=peak_val,
-                    period_info=period_info,
-                    fund_remaining=remaining,
-                    decision=decision,
-                    baseline_ratio=baseline_ratio,
-                    dashboard_url=dashboard_url,
-                )
-            else:
-                logger.info(f"[DRY RUN or 通知OFF] {fund['short_name']} Tier{tier} 到達通知をスキップ")
-
-            triggered = record_trigger(fid, tier, triggered, date=today_str)
-
-        # トレンド計算
-        trend_5d = calc_trend(history, fid, days=5)
-        trend_20d = calc_trend(history, fid, days=20)
-
-        fund_results.append({
-            "fund_id": fid,
-            "short_name": fund["short_name"],
-            "tier": tier,
-            "drawdown": drawdown,
-            "trend_5d": trend_5d,
-            "trend_20d": trend_20d,
-            "baseline_nav": baseline_nav,
-            "baseline_ratio": baseline_ratio,
-            "decision": decision,
-            "avg_cost_ratio": avg_cost_ratio(fund, nav),
-            "inactive_label": fund.get("inactive_label"),
-            "active": active,
-        })
+        # alert対象は、新しいTierに到達したときだけLINE通知する（重複通知防止・回復後に再武装）。
+        # 通知しても購入額・BUY表示・原資の消費は伴わない
+        if asset["alert"]:
+            triggered = rearm_if_recovered(aid, drawdown, asset["tiers"], triggered, rearm_ratio)
+            if is_new_trigger(aid, tier, triggered):
+                if not dry_run and notifications_enabled:
+                    notify_tier_reached(asset, tier, drawdown, avg_ratio, dashboard_url)
+                else:
+                    logger.info(f"[DRY RUN or 通知OFF] {asset['short_name']} Tier{tier} 到達通知をスキップ")
+                triggered = record_notified(aid, tier, triggered, date=today_str)
 
     # ----------------------------------------------------------
-    # 6.5 日次サマリー通知（新規購入停止銘柄も、表示のみ（最高値比・平均取得単価比）でLINEに含める）
+    # 6. 日次サマリー通知（全保有資産の最高値比・平均取得単価比）
     # ----------------------------------------------------------
     if not dry_run and notifications_enabled:
-        notify_daily_summary(today_str, period_info, fund_results, dashboard_url, positions_display)
+        notify_daily_summary(today_str, results, dashboard_url)
     else:
         logger.info("[DRY RUN or 通知OFF] デイリーサマリー通知をスキップ")
 
@@ -433,17 +363,15 @@ def main(dry_run: bool = False) -> None:
     logger.info("ダッシュボードHTMLを生成中...")
     generate(
         today_str=today_str,
-        navs=navs,
+        results=results,
         peak=peak,
-        fund_results=fund_results,
         history=load_history(),  # 追記後の最新データを再読み込み
-        period_info=period_info,
+        positions_history=load_positions_history(),
         settings=settings,
         triggered=triggered,
         market_display=market_display,
-        positions_display=positions_display,
-        positions_history=load_positions_history(),
-        purchase_history=load_purchase_history(),
+        quotes=quotes,
+        purchase_history=purchases,
     )
 
     logger.info(f"=== 暴落監視 完了: {today_str} ===")

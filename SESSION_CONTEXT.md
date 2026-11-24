@@ -11,7 +11,17 @@ BaseLineプロジェクトにおける、Claude Codeとの作業セッション�
 
 ---
 
-## 現在の状態（最終更新: 2026-09-25）
+## 現在の状態（最終更新: 2026-11-24）
+
+### 現行の仕様（2026-11-24 再構成後。以降の「以前の状態」より優先）
+- **ブランチ**: `feature/replan-v5`（`feature/v4-side-nasdaq`の上）。再構成の実装・テスト・ドキュメント同期は済み。**`--apply`（購入実績・data/の移行）・本番へのpush・main反映は未実施**（ユーザー承認待ち）。Tierしきい値は別セッション`tier-thresholds`の検討結果（標準感度）を反映済み（`Personal/02_判断記録/Tierしきい値_検討結果.md`）。
+- **設計**: 旧計画（②③期間・Tier別投入額・BUY/WAIT判定・2028年案）は廃止。Tierは購入判定のない「下落の気づき」。LINEは**最高値比と平均取得単価比だけ**で、アラートは`alert: true`の積立対象4銘柄（orkan・sp500・tracers・nasdaq100）のみ。通知状態は`triggered.json`の`{資産ID: {tier,date}}`で、通知済みより深いTierに到達したときだけ通知し、下落率が「通知済みTierのしきい値×`alert.rearm_ratio`（0.5）」より浅くなると再武装。
+- **全保有10資産**（`assets.py`）: 投資信託8（sbi_v_sp500・sp500・orkan・tracers・nasdaq100・sox・fang・newnisa_orkan）＋米国株2（tesla・nvda）。`role`: core（オルカン・S&P500系）／satellite（それ以外）／separate（子供用）。最高値の起点は最初の約定日（`baseline.dates`）。Tierしきい値（標準感度）: S&P500系・全世界系 11/17/33、Tracers 12/20/28、NASDAQ100 12/25/31、SOX 16/33/45、FANG+ 15/29/36、NVDA 24/38/67、TSLA 31/49/67（残課題13＝約1年後に再校正）。
+- **データ**: 約定履歴CSV（投信・米国株。`Personal/07_約定履歴/`）→`import_sbi_history.py`→`purchase_history.json`（`frame`・`currency`・`account`=attack/side/legacy/child）。カード積立の判定は`monthly_schedule.card.phases`との一致。米国株の株価はYahoo Finance チャートAPI（Actionsからの取得は未確認＝残課題12）。
+- **ダッシュボード**: ルールと見方／運用手順／投資意思決定サマリー／銘柄毎の詳細／推移チャート（米国株はUSD⇄円換算）／市場心理／資金投入管理状況（月数・使用率のみ。`funding_status.json`。原資の総額は`Personal/capital.json`）／長期ポートフォリオ（評価額順・目標上限なし）。**ページデザインの再考は別タスク**。
+- **検証**: `python -m unittest discover -s tests -v`（34件）。作業コピー上で購入実績整備→データ移行→`monitor.py --dry-run`→ブラウザ表示を確認。SBI保有画面と全10資産の口数が一致。
+
+### 以前の状態（再構成前の記録。現行でない項目を含む）
 
 - **開発移管**: Google AntiGravityで構築されたプロジェクトを、本セッションからClaude Codeでの開発に移管。[CLAUDE.md](CLAUDE.md) を新規作成し、プロジェクト理解・開発ガイドとして整備した。
 - **⚠️要対応：LINE通知用アイコン画像が誤って削除された（2026-07-13）**: `# icon/`配下のJPEG画像2点（`S__378019843.jpg`, `S__378028034.jpg`）はコードから参照されていなかったためAntiGravity時代の不要ファイルと判断し削除したが、実際はLINE通知用アイコンとして使用中だった。リポジトリ未追跡（gitに一度もコミットされていない）だったため`git`での復元は不可能。Windowsごみ箱・シャドウコピーも確認したが復元できず。ファイル名が「S__」始まりでLINEアプリの保存画像特有の命名規則のため、**ユーザーのLINEアプリ内保存画像またはスマートフォンのカメラロールに原本が残っている可能性が高い**。次にこの画像が必要になった際は、そちらからの再取得をユーザーに確認すること。
@@ -212,3 +222,13 @@ BaseLineプロジェクトにおける、Claude Codeとの作業セッション�
 - ユーザー決定：旧Tierを含む旧計画全般は議論せず、現状から計画を再構成（計画書はSimple化。形式はxlsxに限らない）。サテライト＝オルカン・S&P500以外（目標・上限は置かず表示のみ。比率は読み込ませた約定履歴からBaseLineが表示）。NVDA・TSLAも全体・サテライトに含める（子供用は別会計）。現金積立は原資から出し期間は原資の残額で調整。追加買付は枠なし・原資から賄う旨をコメントで示す。年次レビューは毎年12月末の照合のみ。Tier通知は「気づき通知」（購入額・BUY表示・原資消費なし）を基準に再設計
 - **タスク（申し送り）**: BaseLineのページデザイン（public/index.html）の再考が必要。ロジックの再構成（Tier通知・比率表示・米国株の取込）の後に着手する
 - ユーザー指定（2026-11-24）：**LINEは最高値比と平均取得単価比のみ**（原資残額・NISA枠・直近約定はLINEに載せずダッシュボードで確認）。**ダッシュボードは原則として保有銘柄すべてを表示**し、構成は次のとおり：ルールと見方／運用手順（サマリ）／投資意思決定サマリ（全保有銘柄の最高値比・基準日比・平均取得単価比・Tier達成の是非）／銘柄毎の詳細（全保有銘柄）／基準価額の推移とTier閾値（継続）／市場心理（参考情報）／資金投入管理状況／長期ポートフォリオ（今回の計画改版に合わせてリプラン）。**削除**：平均取得単価と含み損益、保有ポジション（監視専用。銘柄毎の詳細・推移チャートに統合）。実装前にPlan Modeで計画を立てる
+
+### 2026-11-24: 全面再構成の実装（SBI一次情報に基づく現状から）
+- **背景**: ユーザー指示で旧計画を廃止し、現状（SBI約定履歴・保有画面・積立設定）から再構成。Plan Mode で計画を立て承認（計画ファイル: ~/.claude/plans/line-1-1-golden-meerkat.md）。決定事項: Tierは気づき通知（LINEは最高値比・平均取得単価比のみ、アラートは積立対象4銘柄）／ダッシュボードは全保有資産／原資総額は公開せず月数・使用率のみ／USD株はUSDと円換算の両方／v2.0の技術修正・ページデザインは範囲外。
+- **調査で判明した不具合・事実**: ①TSLAは10/20以降取得失敗。原因はYahoo!ファイナンスJPのHTMLが価格をJSで描画する構造に変わったこと（HTML上は「---」）。Yahoo Finance（米国）のチャートAPI（`query1.finance.yahoo.com/v8/finance/chart/<ticker>`）はJSONで現在値・日次履歴が取れ、NVDA・TSLA・JPY=Xを確認 ②`purchase_history.json`の6/10分が「既存残高」と二重（SBI・V 2,515口・NASDAQ100 3,594口・オルカン約2,689口。既存残高の口数が2〜6月の約定の合計と完全一致、SBI保有画面とも一致）③旧`import_sbi_history.py`は米国株CSV（見出し`国内約定日`・USD単価）の全件を黙って捨て、同日同金額の2件（TSLA）を重複と誤判定する ④`monitor.py`はNVDAを足すとTSLA価格が入る（`fetch_tesla_price()`固定）。
+- **実装**: `assets.py`新設、`purchase_history.py`（USD・`child`・`frame`）、`import_sbi_history.py`（見出し名で列を引く・件数照合・カード積立判定）、`migrate_purchase_history.py`・`migrate_data_layout.py`（一度きりの移行。dry-run既定）、`positions.py`（Yahoo Finance・日次履歴補完）、`judge.py`（購入判定・期間・原資を削除、通知済みTier・再武装、資産ごとの起点日と約定単価によるピーク初期化）、`monitor.py`（全資産を同じ流れで処理、alert対象のみ通知）、`notify.py`（2値のみ）、`portfolio.py`（評価額順・コア/サテライト・USD換算）、`funding.py`（月数・使用率）、`update_purchases.py`（funding_status.jsonも更新）、`generate_dashboard.py`（再構成）、`config/settings.json`（再構成）、`tests/`新設。
+- **移行の検証**（`migrate_purchase_history.py` dry-run）: SBI保有画面（2026-11-24）の口数と全10資産で一致（差0）。NASDAQ100の11/10 20,000円は注文履歴（金額買）に合わせて手動買付、11/11をカード積立と判定（要確認の警告つき）。資金管理: 成長枠1,772,624円使用（73.9%）・つみたて枠190,000円（15.8%）・原資の使用45.3%・積立の月数27.5か月。
+- **未実施（承認待ち）**: ①`migrate_purchase_history.py --apply`（購入実績の整備）②`migrate_data_layout.py --apply`（`history.csv`の列追加・`positions_history.csv`の作り直し・`triggered.json`の新形式化）③`funding.py`で`data/funding_status.json`作成 ④`Personal/capital.json`は作成済み（Git管理外）⑤Tierしきい値の反映（別セッション結果待ち）⑥コミット・push・main反映。
+- **注意**: 作業コピーで`monitor.py --dry-run`を走らせた結果（作業コピーの`public/index.html`等）はリポジトリに入れていない。本番データは移行後にGitHub Actionsが生成する。
+- **Tierしきい値の反映（同日）**: 別セッション`tier-thresholds`の検討結果（過去の下落頻度で校正。Tier1＝年1回程度・Tier2＝約3年に1回・Tier3＝約10年に1回。再現手順・感度プリセット・限界は`Personal/02_判断記録/Tierしきい値_検討結果.md`）を`settings.json`の`tiers`に反映。検討の前提に合わせて再武装を「しきい値から2ポイント戻る」から「下落率がしきい値×0.5より浅くなる」（`alert.rearm_ratio`）に変更（しきい値直下で解除すると、過去データの試算で通知が3〜4倍に増える）。現在の位置: 新しいしきい値ではS&P500・オルカンはTier未到達、Tracers・NASDAQ100・FANG+・SOXがTier1。`triggered.json`の既存記録（sp500・tracers T1=11/23、orkan T1=11/9）は通知済みとして保持される（下落率が半分より浅くなるまで再通知されない）。単体テスト34件通過。
+

@@ -3,8 +3,8 @@ generate_dashboard.py
 =====================
 HTMLダッシュボード生成モジュール。
 
-monitor.py から呼び出され、全銘柄の判定結果をもとに
-public/index.html を生成する。
+monitor.py から呼び出され、全保有資産（投資信託・米国株）の最高値比・基準日比・平均取得単価比・
+Tier到達状況をもとに public/index.html を生成する。
 
 生成されたHTMLはGitHub Pagesで公開される。
 Chart.js はCDN経由で読み込む（依存ライブラリ不要）。
@@ -13,70 +13,86 @@ Chart.js はCDN経由で読み込む（依存ライブラリ不要）。
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
-from judge import decision_display, format_baseline_ratio, format_drawdown
+from assets import KIND_FUND, all_assets
+from funding import load_status
+from judge import format_baseline_ratio, format_drawdown
 from portfolio import build_integrated_view
-from purchase_history import calc_average_cost, filter_by_accounts, fund_cost_accounts, position_purchases, resolve_cost_basis
+from purchase_history import calc_average_cost, cost_records, purchase_markers
 
 logger = logging.getLogger(__name__)
 
 PUBLIC_DIR = Path(__file__).parent.parent / "public"
 
-def _inactive_tag(fund: dict) -> str:
-    """停止（表示のみ）銘柄の見出しタグ。funds[].inactive_label があればその文言、なければ従来の「新規購入停止・監視終了」。"""
-    label = fund.get("inactive_label") or "新規購入停止・監視終了"
-    return f'<span class="inactive-tag">（{label}）</span>'
+ROLE_LABELS = {"core": "コア", "satellite": "サテライト", "separate": "別会計"}
+
+
+def _fmt_price(value: float | None, currency: str) -> str:
+    """価格を通貨に応じて整形する（投資信託は円/1万口、米国株はUSD/株）。"""
+    if value is None:
+        return "取得失敗"
+    return f"{value:,.2f} USD" if currency == "USD" else f"{value:,.0f}円"
+
+
+def _role_tag(role: str) -> str:
+    return f'<span class="inactive-tag">（{ROLE_LABELS.get(role, role)}）</span>'
+
+
+def _current_prices(results: list[dict], history: list[dict]) -> dict:
+    """
+    統合ビューの評価額計算に使う「資産ID→現在値」を作る。
+    取得できた値（米国株は取得失敗時の前回値を含む）を使い、投資信託が取得失敗なら history.csv の最新値で補う。
+    """
+    prices = {}
+    for r in results:
+        price = r.get("price")
+        if price is None and r["kind"] == KIND_FUND:
+            price = next((row.get(r["asset_id"]) for row in reversed(history) if row.get(r["asset_id"]) is not None), None)
+        prices[r["asset_id"]] = price
+    return prices
 
 
 def generate(
     today_str: str,
-    navs: dict,
+    results: list[dict],
     peak: dict,
-    fund_results: list[dict],
     history: list[dict],
-    period_info: dict,
+    positions_history: list[dict],
     settings: dict,
     triggered: dict,
     market_display: dict | None = None,
-    positions_display: dict | None = None,
-    positions_history: list[dict] | None = None,
+    quotes: dict | None = None,
     purchase_history: dict | None = None,
 ) -> None:
     """ダッシュボードHTMLを生成して public/index.html に書き出す。"""
     PUBLIC_DIR.mkdir(exist_ok=True)
 
-    chart_data = _build_chart_data(history, settings, peak, purchase_history)
-    summary_html = _build_summary_table(fund_results, settings)
-    cards_html = _build_fund_cards(fund_results, navs, peak, triggered, period_info, settings)
-    trend_html = _build_trend_summary(fund_results)
-    funds_html, funds_note_html = _build_funds_summary(triggered, period_info, settings)
+    assets = all_assets(settings)
+    purchases = purchase_history or {}
+    usdjpy = (market_display or {}).get("usdjpy", {}).get("value")
+
+    chart_data = _build_chart_data(assets, history, positions_history, settings, peak, usdjpy, purchases)
+    summary_html = _build_summary_table(results)
+    cards_html = _build_asset_cards(results, settings, purchases)
     market_html = _build_market_sentiment(market_display or {})
-    positions_html = _build_positions_section(positions_display or {})
-    average_cost_html = _build_average_cost_section(settings, purchase_history or {}, navs, history)
-    prices = _current_prices(settings, navs, history, positions_display or {})
-    integrated_html = _build_integrated_section(build_integrated_view(settings, purchase_history or {}, prices))
+    view = build_integrated_view(settings, purchases, _current_prices(results, history), usdjpy)
+    integrated_html = _build_integrated_section(view)
+    funding_html = _build_funding_section(load_status())
     ops_html = _build_monthly_ops_section(settings, today_str)
-    usdjpy_rate = (market_display or {}).get("usdjpy", {}).get("value")
-    positions_chart_data = _build_positions_chart_data(positions_history or [], settings, usdjpy_rate, purchase_history or {})
 
     html = _render_html(
         today_str=today_str,
-        period_info=period_info,
         summary_html=summary_html,
         cards_html=cards_html,
-        trend_html=trend_html,
-        funds_html=funds_html,
-        funds_note_html=funds_note_html,
         market_html=market_html,
-        positions_html=positions_html,
-        average_cost_html=average_cost_html,
+        funding_html=funding_html,
         integrated_html=integrated_html,
         ops_html=ops_html,
         chart_data_json=json.dumps(chart_data, ensure_ascii=False),
-        positions_chart_data_json=json.dumps(positions_chart_data, ensure_ascii=False),
         settings=settings,
+        assets=assets,
     )
 
     output_path = PUBLIC_DIR / "index.html"
@@ -93,9 +109,8 @@ def generate(
 def _nearest_label_index(target_date: str | None, labels: list[str], label_index: dict, max_gap_days: int = 7) -> int | None:
     """
     target_date が labels に完全一致しない場合、最も近い日付にスナップしたインデックスを返す。
-    購入日が対象データの記録開始日の前後1〜数日ずれるケース（例: 保有ポジション追加初日は
-    前日分の履歴がまだない）を吸収するための補正。マーカーの日付・金額表示自体は変更せず、
-    グラフ上でどのラベル位置に打つかだけを調整する（NAV等のデータを捏造するものではない）。
+    購入日が対象データの記録開始日の前後1〜数日ずれるケースを吸収するための補正。マーカーの日付・金額表示
+    自体は変更せず、グラフ上でどのラベル位置に打つかだけを調整する（価格データを捏造するものではない）。
     差が max_gap_days を超える場合は表示対象外として None を返す。
     """
     if not target_date or not labels:
@@ -120,301 +135,220 @@ def _nearest_label_index(target_date: str | None, labels: list[str], label_index
     return None
 
 
-def _build_chart_data(history: list[dict], settings: dict, peak: dict, purchase_history: dict | None = None) -> dict:
-    fund_colors = {f["id"]: f["color"] for f in settings["funds"]}
-    fund_names  = {f["id"]: f["short_name"] for f in settings["funds"]}
-
+def _build_chart_data(
+    assets: list[dict],
+    history: list[dict],
+    positions_history: list[dict],
+    settings: dict,
+    peak: dict,
+    usdjpy: float | None,
+    purchase_history: dict,
+) -> dict:
+    """
+    全保有資産の推移チャートデータ。横軸は history.csv の日付（直近180日）。
+    米国株（USD）は data（USD）と data_jpy（円換算）の両方を持つ。円換算は、その日の USD/JPY
+    （positions_history.csv の usdjpy 列）があればそれ、なければ現在のレートによる近似。
+    """
     recent = history[-180:] if len(history) > 180 else history
     labels = [r["date"] for r in recent]
     label_index = {d: i for i, d in enumerate(labels)}
+    pos_by_date = {r["date"]: r for r in positions_history}
 
-    datasets = []
-    for fund in settings["funds"]:
-        fid = fund["id"]
-        data_points = [r.get(fid) for r in recent]
-        datasets.append({
-            "id": fid,
-            "label": fund_names[fid],
-            "data": data_points,
-            "borderColor": fund_colors[fid],
-            "backgroundColor": fund_colors[fid] + "20",
+    datasets, tier_lines, markers_by_asset = [], {}, {}
+    for a in assets:
+        aid = a["id"]
+        color = a["color"]
+        ds = {
+            "id": aid,
+            "label": a["short_name"],
+            "currency": a["currency"],
+            "borderColor": color,
+            "backgroundColor": color + "20",
             "borderWidth": 2,
             "pointRadius": 0,
             "tension": 0.3,
             "fill": False,
-        })
-
-    tier_lines = {}
-    for fund in settings["funds"]:
-        fid = fund["id"]
-        peak_val = peak.get(fid, {}).get("value")
-        if peak_val is None or not fund.get("tiers") or not fund.get("active", True):
-            # Tier閾値のない銘柄・新規購入停止銘柄は閾値線を描画しない
-            continue
-        tier_lines[fid] = {
-            "peak": peak_val,
-            "tier_values": [
-                round(peak_val * (1 - t / 100), 0)
-                for t in fund["tiers"]
-            ],
-            "tiers": fund["tiers"],
-            "color": fund["color"],
         }
+        if a["kind"] == KIND_FUND:
+            ds["data"] = [r.get(aid) for r in recent]
+        else:
+            usd = [(pos_by_date.get(d) or {}).get(aid) for d in labels]
+            rates = [(pos_by_date.get(d) or {}).get("usdjpy") or usdjpy for d in labels]
+            ds["data"] = usd
+            ds["data_jpy"] = [round(v * rt) if v is not None and rt else None for v, rt in zip(usd, rates)]
+        datasets.append(ds)
 
-    purchase_markers = {}
-    for fund in settings["funds"]:
-        fid = fund["id"]
-        records = filter_by_accounts((purchase_history or {}).get(fid, []), fund_cost_accounts(fund))
+        peak_val = peak.get(aid, {}).get("value")
+        if peak_val is not None and a["tiers"]:
+            digits = 2 if a["currency"] == "USD" else 0
+            tier_lines[aid] = {
+                "peak": peak_val,
+                "tier_values": [round(peak_val * (1 - t / 100), digits) for t in a["tiers"]],
+                "tiers": a["tiers"],
+                "color": color,
+            }
+
         markers = []
-        for r in records:
-            if not r.get("price"):
-                # 約定単価が未記録（null）の実績はマーカーを描画できないためスキップ
-                continue
-            idx = _nearest_label_index(r["date"], labels, label_index)
+        for m in purchase_markers(purchase_history.get(aid, [])):
+            idx = _nearest_label_index(m["date"], labels, label_index)
             if idx is None:
-                # 表示期間（直近180日）外、または近傍に記録がない場合はスキップ
-                continue
+                continue  # 表示期間（直近180日）外、または近傍に記録がない場合はスキップ
             markers.append({
                 "index": idx,
-                "date": r["date"],
-                "price": r["price"],
-                "category": r.get("category", ""),
-                "amount": r.get("amount", 0),
+                "date": m["date"],
+                "price": m["price"],
+                "category": m["category"],
+                "amount": m["amount"] or 0,
+                "currency": m["currency"],
             })
-        purchase_markers[fid] = markers
+        markers_by_asset[aid] = markers
 
     return {
         "labels": labels,
         "datasets": datasets,
         "tier_lines": tier_lines,
-        "purchase_markers": purchase_markers,
-    }
-
-
-def _build_positions_chart_data(positions_history: list[dict], settings: dict, usdjpy_rate: float | None, purchase_history: dict | None = None) -> dict:
-    """
-    保有ポジション（Tier投資対象外）の推移チャートデータを構築する。
-    USD建て銘柄（テスラ等）は、現在のUSD/JPYレートで一律換算した近似値をプロットする
-    （為替レートの日次履歴は保持していないため、過去分も現在レートで換算する近似）。
-    """
-    items = [i for i in settings.get("positions", {}).get("items", []) if not i.get("hidden")]
-    recent = positions_history[-180:] if len(positions_history) > 180 else positions_history
-    labels = [r["date"] for r in recent]
-    label_index = {d: i for i, d in enumerate(labels)}
-
-    datasets = []
-    cost_lines = {}
-    purchase_markers = {}
-    for item in items:
-        pid = item["id"]
-        currency = item.get("currency", "JPY")
-        rate = usdjpy_rate if (currency == "USD" and usdjpy_rate) else 1.0
-        data_points = [
-            (r.get(pid) * rate) if r.get(pid) is not None else None
-            for r in recent
-        ]
-        datasets.append({
-            "id": pid,
-            "label": item.get("short_name", pid),
-            "data": data_points,
-            "borderColor": item.get("color", "#94a3b8"),
-            "backgroundColor": item.get("color", "#94a3b8") + "20",
-            "borderWidth": 2,
-            "pointRadius": 0,
-            "tension": 0.3,
-            "fill": False,
-        })
-        records = (purchase_history or {}).get(pid, [])
-        cost_basis = resolve_cost_basis(item.get("cost_basis", 0), records)
-        cost_lines[pid] = round(cost_basis * rate, 2)
-
-        markers = []
-        for p in position_purchases(item, records):
-            idx = _nearest_label_index(p["date"], labels, label_index)
-            if idx is None or not p.get("price"):
-                continue
-            markers.append({
-                "index": idx,
-                "date": p["date"],
-                "price": round(p["price"] * rate, 2),
-                "amount": p.get("amount"),
-                "category": p.get("category", ""),
-            })
-        purchase_markers[pid] = markers
-
-    return {
-        "labels": labels,
-        "datasets": datasets,
-        "cost_lines": cost_lines,
-        "purchase_markers": purchase_markers,
-        "is_jpy_converted": usdjpy_rate is not None,
+        "purchase_markers": markers_by_asset,
     }
 
 
 # ------------------------------------------------------------------
-# サマリーテーブル HTML
+# 投資意思決定サマリー HTML
 # ------------------------------------------------------------------
 
-def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
+def _tier_status(r: dict) -> tuple[str, str]:
+    """Tier到達状況の（表示文言, CSSクラス）。しきい値が未設定・取得失敗の場合はそれを示す。"""
+    if r.get("drawdown") is None:
+        return "取得失敗", "tier-none"
+    if not r.get("thresholds"):
+        return "Tier未設定", "tier-none"
+    if r["tier"] > 0:
+        return f"Tier{r['tier']} 到達", "tier-hit"
+    return "未到達", "tier-ok"
+
+
+def _gain_html(gain: float | None) -> str:
+    if gain is None:
+        return "-"
+    return f'<span style="color:var(--{"green" if gain >= 0 else "red"});font-weight:600;">{gain:+.1f}%</span>'
+
+
+def _build_summary_table(results: list[dict]) -> str:
     rows = []
-    fund_colors = {f["id"]: f["color"] for f in settings["funds"]}
-    inactive_ids = {f["id"] for f in settings["funds"] if not f.get("active", True)}
-    fund_by_id = {f["id"]: f for f in settings["funds"]}
-
-    for r in fund_results:
-        color = fund_colors.get(r["fund_id"], "#ffffff")
-        decision = r.get("decision", "HOLD")
-        info = decision_display(decision)
-        dec_emoji = f"{info['emoji']} {info['tag']}"
-        dec_label = info["label"]
-        custom_label = fund_by_id.get(r["fund_id"], {}).get("inactive_label") if r["fund_id"] in inactive_ids else None
-        if custom_label:
-            dec_emoji, dec_label = "⏹ 表示のみ", custom_label
-        dec_class = f"badge-{info['css']}"
-
-        tier_val = r["tier"]
-        is_inactive = r["fund_id"] in inactive_ids
-        tier_str = "-" if is_inactive else (f"Tier {tier_val}" if tier_val > 0 else "未到達")
-        gain = r.get("avg_cost_ratio")
-        if gain is None:
-            gain_html = "-"
-        else:
-            gain_html = f'<span style="color:var(--{"green" if gain >= 0 else "red"});font-weight:600;">{gain:+.1f}%</span>'
-
+    for r in results:
+        tier_text, tier_css = _tier_status(r)
+        drawdown = format_drawdown(r["drawdown"]) if r.get("drawdown") is not None else "-"
+        stale = '<span class="inactive-tag">（前回値）</span>' if r.get("stale") else ""
         rows.append(
             f'<tr>'
-            f'  <td data-label="監視銘柄">'
+            f'  <td data-label="銘柄">'
             f'    <div style="display:flex;align-items:center;gap:8px;">'
-            f'      <span class="fund-dot" style="background-color:{color};box-shadow:0 0 6px {color}"></span>'
-            f'      <span style="font-weight:600;">{r["short_name"]}</span>'
-            f'{_inactive_tag(fund_by_id[r["fund_id"]]) if r["fund_id"] in inactive_ids else ""}'
+            f'      <span class="fund-dot" style="background-color:{r["color"]};box-shadow:0 0 6px {r["color"]}"></span>'
+            f'      <span style="font-weight:600;">{r["short_name"]}</span>{_role_tag(r["role"])}{stale}'
             f'    </div>'
             f'  </td>'
-            f'  <td data-label="最高値比 (下落率)"><span class="val-drawdown">{format_drawdown(r["drawdown"])}</span></td>'
-            f'  <td data-label="基準日比 (上昇率)">{format_baseline_ratio(r.get("baseline_ratio"))}</td>'
-            f'  <td data-label="平均取得単価比 (含み損益)">{gain_html}</td>'
-            f'  <td data-label="到達段階"><span class="val-tier">{tier_str}</span></td>'
-            f'  <td data-label="システム判定"><span class="status-badge {dec_class}">{dec_emoji} {dec_label}</span></td>'
+            f'  <td data-label="最高値比 (下落率)"><span class="val-drawdown">{drawdown}</span></td>'
+            f'  <td data-label="基準日比">{format_baseline_ratio(r.get("baseline_ratio"))}</td>'
+            f'  <td data-label="平均取得単価比">{_gain_html(r.get("avg_cost_ratio"))}</td>'
+            f'  <td data-label="Tier到達"><span class="val-tier {tier_css}">{tier_text}</span></td>'
             f'</tr>'
         )
     return "\n".join(rows)
 
 
 # ------------------------------------------------------------------
-# 銘柄カード HTML
+# 銘柄カード HTML（全保有資産）
 # ------------------------------------------------------------------
 
-def _build_fund_cards(
-    fund_results: list[dict],
-    navs: dict,
-    peak: dict,
-    triggered: dict,
-    period_info: dict,
-    settings: dict,
-) -> str:
+def _build_asset_cards(results: list[dict], settings: dict, purchase_history: dict) -> str:
+    baseline = settings.get("baseline", {})
+    baseline_dates = baseline.get("dates", {})
+    default_start = settings.get("peak_start_date", "")
     html_parts = []
-    result_map = {r["fund_id"]: r for r in fund_results}
 
-    for fund in settings["funds"]:
-        fid = fund["id"]
-        result = result_map.get(fid, {})
-        nav = navs.get(fid)
-        peak_info = peak.get(fid, {})
-        peak_val = peak_info.get("value")
-        peak_date = peak_info.get("date", "-")
-        
-        tier = result.get("tier", 0)
-        drawdown = result.get("drawdown", 0.0)
-        baseline_nav = result.get("baseline_nav", 0)
-        baseline_ratio = result.get("baseline_ratio")
-        decision = result.get("decision", "HOLD")
-        
-        tiers = fund.get("tiers") or []
-        is_active = fund.get("active", True)
-        color = fund["color"]
-        
-        info = decision_display(decision)
-        dec_emoji = f"{info['emoji']} {info['tag']}"
-        dec_label = info["label"]
-        dec_class = f"dec-{info['css']}"
-        stop_label = fund.get("inactive_label") or "新規購入停止"
-        if not is_active and fund.get("inactive_label"):
-            dec_emoji, dec_label = "⏹ 表示のみ", stop_label
+    for r in results:
+        aid, currency, color = r["asset_id"], r["currency"], r["color"]
+        tiers = r["thresholds"]
+        start = baseline_dates.get(aid, default_start)
+        avg = calc_average_cost(cost_records(purchase_history.get(aid, [])))
+        avg_str = _fmt_price(avg["avg_cost"], currency) if avg else "購入実績なし"
+        drawdown = r.get("drawdown")
+        tier_text, tier_css = _tier_status(r)
 
-        next_tier_text = _next_tier_text(tier, drawdown, tiers) if (is_active and tiers) else f"Tier判定なし（{stop_label}）"
+        price_str = _fmt_price(r.get("price"), currency)
+        stale_note = f'<div class="metric-sub">※取得失敗のため{r["price_date"]}の値</div>' if r.get("stale") else ""
+        peak_str = _fmt_price(r.get("peak_value"), currency) if r.get("peak_value") is not None else "未記録"
+        peak_sub = f'{r.get("peak_date") or "-"} 記録（起点 {start}）'
+        base_price = r.get("baseline_price")
+        base_str = _fmt_price(base_price, currency) if base_price else "未設定"
 
-        nav_str = f"{nav:,.0f}円" if nav is not None else "取得失敗"
-        peak_str = f"{peak_val:,.0f}円" if peak_val is not None else "未記録"
-        baseline_str = f"{baseline_nav:,.0f}円" if baseline_nav > 0 else "未設定"
-        
-        drawdown_str = format_drawdown(drawdown) if nav is not None else "-"
-        baseline_ratio_str = format_baseline_ratio(baseline_ratio) if nav is not None else "-"
-        inactive_tag = _inactive_tag(fund) if not fund.get("active", True) else ""
-
-        tier_bars = _tier_bars(tier, tiers, color)
-        if is_active and tiers:
+        if tiers and drawdown is not None:
+            next_text = _next_tier_text(r["tier"], drawdown, tiers)
             tier_section = (
-                '<div class="tier-indicator-title">購入目安 (Tier) 到達状況</div>'
-                f'<div class="tier-progress">{tier_bars}</div>'
+                '<div class="tier-indicator-title">下落の目安 (Tier) 到達状況</div>'
+                f'<div class="tier-progress">{_tier_bars(r["tier"], tiers, color)}</div>'
             )
         else:
-            tier_section = f'<div class="market-card__note">{stop_label}のため、Tier判定・購入判定は行いません（基準価額と含み損益の表示のみ）。</div>'
+            next_text = "Tier未設定"
+            tier_section = '<div class="market-card__note">Tierのしきい値が未設定のため、到達状況は表示しません（config/settings.json の tiers で設定します）。</div>'
 
-        card = f"""
+        html_parts.append(f"""
 <div class="fund-card" style="--fund-color: {color}">
   <div class="fund-card__header">
     <div class="fund-card__name-block">
-      <span class="fund-tag" style="border: 1px solid {color}50; color:{color};">{fund['short_name']}</span>{inactive_tag}
-      <div class="fund-card__name">{fund['name']}</div>
+      <span class="fund-tag" style="border: 1px solid {color}50; color:{color};">{r['short_name']}</span>{_role_tag(r['role'])}
+      <div class="fund-card__name">{r['name']}</div>
     </div>
-    <div class="status-badge {dec_class}">{dec_emoji} {dec_label}</div>
+    <div class="status-badge {tier_css}">{tier_text}</div>
   </div>
 
   <div class="fund-card__metrics">
     <div class="metric-item">
-      <div class="metric-label">現在価格</div>
-      <div class="metric-value">{nav_str}</div>
+      <div class="metric-label">現在値</div>
+      <div class="metric-value">{price_str}</div>
+      {stale_note}
     </div>
     <div class="metric-item">
-      <div class="metric-label">設定来最高価格</div>
+      <div class="metric-label">設定来最高値</div>
       <div class="metric-value">{peak_str}</div>
-      <div class="metric-sub">{peak_date} 記録</div>
+      <div class="metric-sub">{peak_sub}</div>
     </div>
     <div class="metric-item metric-item--highlight">
-      <div class="metric-label">最高値からの下落率</div>
-      <div class="metric-value drawdown">{drawdown_str}</div>
-      <div class="metric-sub">{next_tier_text}</div>
+      <div class="metric-label">最高値比（下落率）</div>
+      <div class="metric-value drawdown">{format_drawdown(drawdown) if drawdown is not None else '-'}</div>
+      <div class="metric-sub">{next_text}</div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">判定基準日価格</div>
-      <div class="metric-value">{baseline_str}</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">{baseline_ratio_str}</span></div>
+      <div class="metric-label">平均取得単価</div>
+      <div class="metric-value">{avg_str}</div>
+      <div class="metric-sub">比: {_gain_html(r.get('avg_cost_ratio'))}</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">基準日価格</div>
+      <div class="metric-value">{base_str}</div>
+      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">{format_baseline_ratio(r.get('baseline_ratio'))}</span></div>
     </div>
   </div>
 
   {tier_section}
 </div>
-"""
-        html_parts.append(card)
+""")
     return "\n".join(html_parts)
 
 
 def _next_tier_text(tier: int, drawdown: float, tiers: list) -> str:
-    next_tier_idx = tier
-    if next_tier_idx < len(tiers):
-        gap = tiers[next_tier_idx] - drawdown
-        return f"Tier{next_tier_idx + 1} (-{tiers[next_tier_idx]}%) まであと {gap:.1f}pt"
+    if tier < len(tiers):
+        gap = tiers[tier] - drawdown
+        return f"Tier{tier + 1} (-{tiers[tier]}%) まであと {gap:.1f}pt"
     return "Tier3上限超過済"
 
 
 def _tier_bars(tier: int, tiers: list, color: str) -> str:
     bars = []
-    labels = ["Tier1", "Tier2", "Tier3"]
-    for i, (label, threshold) in enumerate(zip(labels, tiers), start=1):
+    for i, threshold in enumerate(tiers, start=1):
         active = "active" if tier >= i else ""
         bars.append(
             f'<div class="tier-bar {active}" style="{"--bar-color:" + color if active else ""}">'
-            f'  <span class="tier-bar__label">{label}</span>'
+            f'  <span class="tier-bar__label">Tier{i}</span>'
             f'  <span class="tier-bar__val">-{threshold}%</span>'
             f'</div>'
         )
@@ -422,26 +356,13 @@ def _tier_bars(tier: int, tiers: list, color: str) -> str:
 
 
 # ------------------------------------------------------------------
-# その他サマリー HTML
+# 市場心理 HTML
 # ------------------------------------------------------------------
-
-def _build_trend_summary(fund_results: list[dict]) -> str:
-    items = []
-    for r in fund_results:
-        items.append(
-            f'<div class="trend-item">'
-            f'  <span class="trend-name">{r["short_name"]}</span>'
-            f'  <span class="trend-val">5日: <span class="trend-icon">{r.get("trend_5d", "→")}</span></span>'
-            f'  <span class="trend-val">20日: <span class="trend-icon">{r.get("trend_20d", "→")}</span></span>'
-            f'</div>'
-        )
-    return "\n".join(items)
-
 
 def _build_market_sentiment(market_display: dict) -> str:
     """
     市場心理カード（VIX・米10年金利・USD/JPY）のHTMLを生成する。
-    あくまで参考情報であり、BUY/WAIT判定には一切使用しない。
+    あくまで参考情報であり、Tierの判定・LINE通知には一切使用しない。
     データがまだない場合は準備中メッセージを返す。
     """
     cards = []
@@ -469,7 +390,7 @@ def _build_market_sentiment(market_display: dict) -> str:
             f'  <div class="market-card__label">米10年国債利回り</div>'
             f'  <div class="market-card__value">{us10y["value"]:.2f}<span class="market-card__unit">%</span></div>'
             f'  <div class="market-card__direction"><span class="trend-icon">{direction.get("arrow", "→")}</span> 前回比 {diff_str}</div>'
-            f'  <div class="market-card__note">成長株（FANG+・SOXなど）は金利上昇局面で下がりやすい傾向があります。</div>'
+            f'  <div class="market-card__note">成長株（半導体・テック株など）は金利上昇局面で下がりやすい傾向があります。</div>'
             f'  <div class="market-card__date">{us10y.get("date", "-")} 時点</div>'
             f'</div>'
         )
@@ -495,233 +416,141 @@ def _build_market_sentiment(market_display: dict) -> str:
     return "\n".join(cards)
 
 
-def _build_positions_section(positions_display: dict) -> str:
-    """
-    保有ポジション（Tier投資対象外・監視専用）カードのHTMLを生成する。
-    含み損益（現在価格と取得単価の差）を表示するだけで、BUY/WAIT判定には使用しない。
-    """
-    positions_display = {k: v for k, v in positions_display.items() if not v.get("hidden")}
-    if not positions_display:
-        return '<div class="market-empty">保有ポジションのデータを準備中です。次回の自動実行後に表示されます。</div>'
+# ------------------------------------------------------------------
+# 資金投入管理状況 HTML（月数・使用率だけ。金額は公開しない）
+# ------------------------------------------------------------------
 
-    cards = []
-    for p in positions_display.values():
-        level = p.get("level", {})
-        currency = p.get("currency", "JPY")
-        if currency == "USD":
-            value_str = f"{p['value']:,.2f} USD"
-            jpy_note = f'<div class="market-card__note">約{p["value_jpy"]:,.0f}円換算</div>'
-            cost_str = f"{p['cost_basis']:,.2f} USD"
-        else:
-            value_str = f"{p['value']:,.0f}円"
-            jpy_note = ""
-            cost_str = f"{p['cost_basis']:,.0f}円"
+def _usage_card(label: str, percent: float, note: str) -> str:
+    return (
+        '<div class="market-card">'
+        f'<div class="market-card__label">{label}</div>'
+        f'<div class="market-card__value">{percent:.1f}<span class="market-card__unit">%</span></div>'
+        f'{_bar(percent)}'
+        f'<div class="market-card__note">{note}</div>'
+        '</div>'
+    )
 
-        purchase_note = ""
-        purchases = p.get("purchases") or []
-        if purchases:
-            dates_str = "、".join(x["date"] for x in purchases)
-            total = sum(x["amount"] for x in purchases if x.get("amount"))
-            total_str = f"{total:,.0f}円" if total else "-"
-            times_str = f"（{len(purchases)}回）" if len(purchases) > 1 else ""
-            purchase_note = f'<div class="market-card__note">取得日: {dates_str} ／ 投入金額: {total_str}{times_str}</div>'
 
-        cards.append(
-            f'<div class="market-card" style="border-left: 3px solid {p.get("color", "#94a3b8")}">'
-            f'  <div class="market-card__label">{p["short_name"]}</div>'
-            f'  <div class="market-card__value">{value_str}</div>'
-            f'  {jpy_note}'
-            f'  <span class="status-badge {level.get("css", "pos-neutral")}">{level.get("emoji", "")} {level.get("label", "-")}</span>'
-            f'  <div class="market-card__note">取得単価: {cost_str} ／ 含み損益: {p["ratio"]:+.1f}%</div>'
-            f'  {purchase_note}'
-            f'  <div class="market-card__date">{p.get("date", "-")} 時点</div>'
-            f'</div>'
+def _build_funding_section(status: dict | None) -> str:
+    """原資で積立が続けられる月数と、NISA枠の使用率（金額は載せない）。status は data/funding_status.json。"""
+    if not status:
+        body = '<div class="market-empty">資金管理のデータを準備中です。約定履歴の取り込み（update_purchases.py）後に表示されます。</div>'
+    else:
+        cards = []
+        capital = status.get("capital")
+        if capital:
+            months = capital.get("months_remaining")
+            months_html = (
+                f'<div class="market-card__value">{months:.1f}<span class="market-card__unit">か月</span></div>'
+                if months is not None else '<div class="market-card__value" style="font-size:16px;">算出不可</div>'
+            )
+            cards.append(
+                '<div class="market-card">'
+                '<div class="market-card__label">原資で積立が続けられる月数</div>'
+                f'{months_html}'
+                '<div class="market-card__note">原資の残額 ÷ 現金積立の月額。追加買付も原資から賄うため、実際の月数は変わります。</div>'
+                '</div>'
+            )
+            cards.append(_usage_card("原資の使用率", capital["used_percent"], "原資から出した買付（現金積立・追加買付・個別株）の累計 ÷ 原資"))
+        nisa = status.get("nisa", {})
+        year = nisa.get("year", "")
+        cards.append(_usage_card(f"NISA 成長投資枠の使用率（{year}年）", nisa.get("growth_percent", 0.0), "年間240万円に対する約定の累計（子供用・個別株を含む）"))
+        cards.append(_usage_card(f"NISA つみたて投資枠の使用率（{year}年）", nisa.get("tsumitate_percent", 0.0), "年間120万円に対する約定の累計"))
+        body = (
+            f'<div class="market-grid">{"".join(cards)}</div>'
+            f'<p class="market-disclaimer" style="margin-top:10px;">{status.get("as_of", "-")} 時点（約定履歴を取り込んだときに更新されます）。金額は公開していません。</p>'
         )
 
-    return "\n".join(cards)
+    return (
+        '<section class="section-panel">'
+        '<div class="section-title">資金投入管理状況</div>'
+        f'{body}'
+        '</section>'
+    )
 
 
-def _current_prices(settings: dict, navs: dict, history: list[dict], positions_display: dict) -> dict:
-    """
-    統合ビューの評価額計算に使う「銘柄ID→現在の基準価額」を作る。
-    Tier対象ファンドは当日取得の navs（取得失敗時は history.csv の最新値）、
-    保有ポジション系（SBI・V等、hidden含む）は positions_display の値を使う。
-    """
-    prices = {}
-    for f in settings["funds"]:
-        fid = f["id"]
-        nav = navs.get(fid)
-        if nav is None:
-            nav = next((r.get(fid) for r in reversed(history) if r.get(fid) is not None), None)
-        prices[fid] = nav
-    for pid, p in positions_display.items():
-        prices[pid] = p.get("value")
-    return prices
-
+# ------------------------------------------------------------------
+# 長期ポートフォリオ HTML
+# ------------------------------------------------------------------
 
 def _yen(v: float | None) -> str:
     return f"{v:,.0f}円" if v is not None else "算出不可"
 
 
-_ACCOUNT_LABELS = {"attack": "攻撃フェーズ", "side": "別枠積立", "legacy": "旧つみたてNISA（保持）"}
-_ACCOUNT_SHORT = {"attack": "攻撃", "side": "別枠", "legacy": "旧つみたて"}
-_ROLE_LABELS = {"core": "コア", "satellite": "サテライト"}
-
-
-def _ratio_block(title: str, value_html: str, badge: str, formula: str, amounts: str, bar: str, note: str = "") -> str:
-    """比率1つ分のブロック（見出し・大きな数値・バッジ・計算式・バー・補足）のHTMLを返す。"""
-    return (
-        '<div class="sat-hero" style="margin-top:12px;">'
-        f'<div class="sat-hero__label">{title}</div>'
-        f'<div class="sat-hero__row">{value_html}{badge}</div>'
-        f'<div class="market-card__note">計算式: {formula}</div>'
-        f'<div class="market-card__note">{amounts}</div>'
-        f'{bar}{note}'
-        '</div>'
-    )
-
-
-def _bar(share: float, marker: float | None, marker_label: str, limit: float | None = None, limit_label: str = "") -> str:
-    """割合バー（塗り＝現在値、黄色の線＝目標または基準、赤い線＝上限）。"""
+def _bar(share: float) -> str:
+    """割合バー（塗り＝割合）。"""
     fill = max(0.0, min(share, 100.0))
-    mk = ""
-    if marker is not None:
-        m = max(0.0, min(marker, 100.0))
-        mk = (
-            f'<div class="sat-bar__target" style="left:{m:.1f}%"></div>'
-            f'<div class="sat-bar__target-label" style="left:{m:.1f}%">{marker_label}</div>'
-        )
-    if limit is not None:
-        lm = max(0.0, min(limit, 100.0))
-        mk += (
-            f'<div class="sat-bar__limit" style="left:{lm:.1f}%"></div>'
-            f'<div class="sat-bar__limit-label" style="left:{lm:.1f}%">{limit_label}</div>'
-        )
-    return f'<div class="sat-bar"><div class="sat-bar__fill" style="width:{fill:.1f}%"></div>{mk}</div>'
+    return f'<div class="sat-bar"><div class="sat-bar__fill" style="width:{fill:.1f}%"></div></div>'
 
 
 def _build_integrated_section(view: dict | None) -> str:
     """
-    長期ポートフォリオ（保有している全ファンドの合算）の統合ビューのセクションHTMLを生成する。
-    「全体」に対するサテライト比率（目標との対比）と、維持判断ルール（比率ベース）の状況、
-    グループ別の評価額・全体に占める割合・口座別内訳を表示する（表示専用）。
-    view が None（未設定・無効）の場合は空文字を返す。
+    長期ポートフォリオ（保有資産の合算）のセクションHTMLを生成する（表示専用）。
+    評価額の大きい順に、コア／サテライトの区分・評価額・全体に占める割合・口座別の内訳を表示する。
+    子供用（別会計）は比率の分母に含めず、別に表示する。目標・上限は置かない。
     """
     if view is None:
         return ""
 
-    groups = view["groups"]
     total = view["total_value"]
-    provisional = f'<p class="pf-warn">⚠ {view["provisional"]}</p>' if view.get("provisional") else ""
-    all_names = "、".join(n for g in groups for n in g["fund_names"])
-
-    # ---- サテライト比率
-    ratio, target, limit = view["satellite_ratio"], view["target_percent"], view.get("limit_percent")
-    sat_formula = "（" + "＋".join(view["satellite_names"]) + "）÷ 全体"
-    if ratio is None:
-        sat_block = _ratio_block(
-            "サテライト比率", '<span class="sat-hero__value" style="font-size:20px;">算出不可</span>', "",
-            sat_formula, "現在の基準価額を取得できない銘柄があるため算出できません（次回の実行で再計算されます）。", "",
+    if total is None:
+        names = "、".join(view["missing"])
+        summary = (
+            f'<p class="market-disclaimer">現在値を取得できない資産（{names}）があるため、全体の評価額と比率は算出できません。'
+            '次回の実行で再計算されます。</p>'
         )
     else:
-        diff = view["diff_pt"]
-        status = view.get("satellite_status")
-        if status == "over_limit":
-            badge_css, badge_txt = "pos-warning", f"上限{limit:g}%を超過（目標より {abs(diff):.1f}pt 高い）"
-        elif status == "over_target":
-            badge_css, badge_txt = "pos-caution", f"目標超過・上限内（目標より {abs(diff):.1f}pt 高い）"
-        else:
-            badge_css, badge_txt = "pos-good", f"目標以内（目標まであと {abs(diff):.1f}pt）"
-        badge = f'<span class="status-badge {badge_css}">{badge_txt}</span>'
-        title = f"サテライト比率（目標 {target:.0f}%" + (f"・上限 {limit:g}%）" if limit is not None else "）")
-        sat_block = _ratio_block(
-            title,
-            f'<span class="sat-hero__value">{ratio:.1f}%</span>', badge, sat_formula,
-            f"{_yen(view['satellite_value'])} ÷ {_yen(total)}",
-            _bar(ratio, target, f"目標{target:.0f}%", limit, f"上限{limit:g}%" if limit is not None else ""),
-        )
-
-    # ---- 維持判断ルール（比率ベース。例: S&P500比率）
-    review_block = ""
-    hr = view.get("share_review")
-    if hr:
-        share, thr, status = hr["share"], hr["threshold_percent"], hr["status"]
-        formula = "（" + "＋".join(hr["fund_names"]) + "）÷ 全体"
-        if status is None:
-            review_block = _ratio_block(
-                f'{hr["label"]}比率', '<span class="sat-hero__value" style="font-size:20px;">算出不可</span>', "",
-                formula, "現在の基準価額を取得できない銘柄があるため算出できません。", "",
-            )
-        else:
-            css, txt = {
-                "keep": ("pos-good", "維持（基準内）"),
-                "review": ("pos-warning", "見直し検討"),
-                "unset": ("pos-neutral", "基準の数値が未設定"),
-            }[status]
-            rule = (
-                f"基準: {hr['label']}比率が{thr:g}%を超えたら見直しを検討する"
-                if thr is not None else
-                f"基準: {hr['label']}比率が○%を超えたら見直しを検討する（○はユーザーが決めた数値を config/settings.json の long_term_portfolio.share_review.threshold_percent に設定）"
-            )
-            note = f"<br>{hr['note']}" if hr.get("note") else ""
-            review_block = _ratio_block(
-                f'{hr["label"]}比率（維持判断ルール）',
-                f'<span class="sat-hero__value">{share:.1f}%</span>',
-                f'<span class="status-badge {css}">{txt}</span>', formula,
-                f"{_yen(hr['value'])} ÷ {_yen(total)}",
-                _bar(share, thr, f"基準{thr:g}%" if thr is not None else ""),
-                f'<div class="market-card__note">{rule}（表示のみ。自動売却はしません）{note}</div>',
-            )
-
-    # ---- グループ別カード
-    cards = []
-    for g in groups:
-        accounts = []
-        for h in g["holdings"]:
-            if h["account"] not in accounts:
-                accounts.append(h["account"])
-        by_account = {a: 0.0 for a in accounts}
-        missing = {a: False for a in accounts}
-        for h in g["holdings"]:
-            if h["value"] is None:
-                missing[h["account"]] = True
-            else:
-                by_account[h["account"]] += h["value"]
-        share_txt = f"全体の{g['share']:.1f}%" if g["share"] is not None else "全体比 -"
-        costs = [
-            f"{_ACCOUNT_SHORT.get(h['account'], h['account'])} {h['avg_cost']:,.0f}円"
-            for h in g["holdings"] if h["avg_cost"] is not None
-        ]
-        cost_txt = "／".join(costs) if costs else "データなし"
-        lines = "".join(
-            f'<div class="pf-line"><span>{_ACCOUNT_LABELS.get(a, a)}</span>'
-            f'<span>{"算出不可" if missing[a] else _yen(by_account[a])}</span></div>'
-            for a in accounts
-            if len(accounts) > 1 or a != "attack"
-        )
-        cards.append(
-            '<div class="market-card">'
-            f'<div class="market-card__label">{g["label"]}<span class="inactive-tag">{_ROLE_LABELS.get(g["role"], g["role"])}</span></div>'
-            f'<div class="market-card__value" style="font-size:20px;">{_yen(g["total_value"])}</div>'
-            f'<div class="market-card__note">{share_txt}</div>'
-            f'{lines}'
-            f'<div class="pf-line"><span>平均取得単価</span><span>{cost_txt}</span></div>'
+        summary = (
+            '<div class="sat-hero">'
+            '<div class="sat-hero__label">サテライト比率（コア以外の合計 ÷ 全体）</div>'
+            f'<div class="sat-hero__row"><span class="sat-hero__value">{view["satellite_share"]:.1f}%</span>'
+            f'<span class="status-badge pos-neutral">コア {view["core_share"]:.1f}% ／ サテライト {view["satellite_share"]:.1f}%</span></div>'
+            f'<div class="market-card__note">{_yen(view["satellite_value"])} ÷ {_yen(total)}（目標・上限は置かず、表示のみ）</div>'
+            f'{_bar(view["satellite_share"])}'
             '</div>'
         )
 
+    rows = []
+    for r in view["rows"]:
+        share = r.get("share")
+        share_cell = f'{share:.1f}%{_bar(share)}' if share is not None else "-"
+        detail = "／".join(
+            f'{a["label"]} {_yen(a["value"])}' for a in r["accounts"] if len(r["accounts"]) > 1
+        )
+        rows.append(
+            '<tr>'
+            f'<td data-label="銘柄"><span class="fund-dot" style="background-color:{r["color"]}"></span> '
+            f'<span style="font-weight:600;">{r["short_name"]}</span><div class="market-card__note">{detail}</div></td>'
+            f'<td data-label="区分">{ROLE_LABELS.get(r["role"], r["role"])}</td>'
+            f'<td data-label="評価額">{_yen(r["value"])}</td>'
+            f'<td data-label="全体に占める割合">{share_cell}</td>'
+            '</tr>'
+        )
+    table = (
+        '<div class="table-wrapper"><table class="summary-table">'
+        '<thead><tr><th>銘柄（評価額の大きい順）</th><th>区分</th><th>評価額</th><th>全体に占める割合</th></tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody></table></div>'
+    )
+
+    separate = ""
+    if view["separate"]:
+        parts = "、".join(f'{s["short_name"]} {_yen(s["value"])}' for s in view["separate"])
+        separate = f'<p class="market-disclaimer" style="margin-top:10px;">別会計（比率の分母に含めません）: {parts}</p>'
+
     return (
         '<section class="section-panel">'
-        '<div class="section-title">🏦 長期ポートフォリオ（保有ファンドの合算）</div>'
-        '<p class="market-disclaimer">2028年月初のリバランス判断用に、保有している全ファンド（攻撃フェーズ・別枠積立・旧つみたてNISA）の評価額を合算した「全体」に対する割合を表示します。'
-        '参考情報であり、BUY/WAITの判定・LINE通知には使用しません。</p>'
-        f'<p class="market-disclaimer"><strong>全体</strong> ＝ {all_names} の評価額の合計 ＝ <strong>{_yen(total)}</strong></p>'
-        f'{provisional}{sat_block}{review_block}'
-        f'<div class="market-grid" style="margin-top:16px;">{"".join(cards)}</div>'
-        '<p class="market-disclaimer" style="margin-top:10px;">評価額＝保有口数×現在の基準価額（既存残高を含む）。S&P500の別枠積立・旧つみたてNISA分はSBI・V・S&P500の基準価額で評価。'
-        'はじめてのNISA（子供用の別枠）・テスラは含みません。</p>'
+        '<div class="section-title">🏦 長期ポートフォリオ（保有資産の合算）</div>'
+        '<p class="market-disclaimer">保有している全資産（投資信託・米国株・旧つみたてNISAを含む）の評価額を合算し、コア（オルカン・S&amp;P500系）とサテライト（それ以外）の割合を表示します。'
+        '参考情報であり、Tierの判定・LINE通知には使用しません。</p>'
+        f'{summary}{table}{separate}'
+        '<p class="market-disclaimer" style="margin-top:10px;">評価額＝保有口数（株数）×現在値。保有口数は約定履歴から集計し、米国株はUSD株価×USD/JPYで円換算しています。</p>'
         '</section>'
     )
 
+
+# ------------------------------------------------------------------
+# 毎月の運用手順 HTML
+# ------------------------------------------------------------------
 
 def _schedule_phase(block: dict, today_str: str) -> tuple[list[dict], dict | None]:
     """
@@ -740,19 +569,13 @@ def _schedule_phase(block: dict, today_str: str) -> tuple[list[dict], dict | Non
 def _build_monthly_ops_section(settings: dict, today_str: str = "") -> str:
     """
     毎月の運用手順のサマリ（開閉式ガイド）のHTMLを生成する。
-    自動で行われること／毎月の作業／Tier到達時の対応／節目の判断を、手順どおりに並べる。
-    目標・基準の数値は settings.json（long_term_portfolio）から取得して表示する。
+    自動で行われること／毎月の作業／下落アラートが来たときの対応を、手順どおりに並べる。
     """
-    lt = settings.get("long_term_portfolio", {})
-    target = lt.get("satellite_target_percent", 20)
-    limit = lt.get("satellite_limit_percent")
-    thr = (lt.get("share_review") or {}).get("threshold_percent")
-    thr_txt = f"{thr:g}%" if thr is not None else "未設定"
-
     def schedule_line(key: str) -> str:
         b = (settings.get("monthly_schedule") or {}).get(key)
         if not b:
             return ""
+
         def fmt(items: list[dict]) -> str:
             text = "／".join(
                 f'{i["fund"]} {i["amount"]:,}円' + (f'（{i["account_label"]}）' if i.get("account_label") else "")
@@ -771,12 +594,12 @@ def _build_monthly_ops_section(settings: dict, today_str: str = "") -> str:
             line += f'<br><span style="color:var(--yellow);">▶ {note}の新構成: {fmt(upcoming["items"])}</span>'
         return line + '</li>'
 
-    schedule_html = schedule_line("attack") + schedule_line("side")
+    schedule_html = schedule_line("cash") + schedule_line("card")
 
     return (
         '<section class="guide-section">'
         '<button class="guide-toggle" id="opsToggle">'
-        '<span>📅 毎月の運用手順（サマリ）</span>'
+        '<span>📅 運用手順（サマリ）</span>'
         '<span class="toggle-icon" style="display:inline-block; transition:transform 0.2s;">▼</span>'
         '</button>'
         '<div class="guide-content" id="opsContent">'
@@ -785,33 +608,32 @@ def _build_monthly_ops_section(settings: dict, today_str: str = "") -> str:
         '<div class="guide-item">'
         '<h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🤖 自動で行われること（何もしなくてよい）</h4>'
         '<ul style="padding-left: 0;">'
-        '<li>平日の朝7時ごろ、基準価額の取得・下落率／Tier判定・ダッシュボード更新が自動で走ります。</li>'
-        '<li>平均取得単価・評価額・サテライト比率・S&amp;P500比率は、購入実績から自動で計算されます。</li>'
-        '<li>Tier到達時のアラートと、毎朝の日次サマリーはLINEに届きます。</li>'
+        '<li>平日の朝7時ごろ、基準価額・株価の取得、最高値比・Tier判定、ダッシュボードの更新が自動で走ります。</li>'
+        '<li>平均取得単価・評価額・コア／サテライトの比率は、約定履歴から自動で計算されます。</li>'
+        '<li>積立対象の銘柄で新しいTierに到達すると、LINEに下落アラートが届きます。毎朝の日次サマリー（最高値比・平均取得単価比）も届きます。</li>'
         '</ul>'
         '<h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📅 毎月の作業（3ステップ）</h4>'
         '<ul style="padding-left: 0;">'
         '<li><strong>① 積立日</strong>（SBI証券の積立設定どおりに自動で約定。操作は不要です）</li>'
         f'{schedule_html}'
-        '<li><strong>② 約定単価が確定したら</strong>（積立日の数日後）: SBI証券から<strong>約定履歴CSV</strong>をダウンロードし、'
-        '<code>python scripts/update_purchases.py 約定履歴.csv</code> を実行します。取り込み予定を確認（y）→ 書き込み → コミット・プッシュまで自動です。</li>'
-        '<li><strong>③ 翌営業日以降</strong>: ダッシュボードの反映を確認します。見る場所は「平均取得単価と含み損益」と、最下部の「長期ポートフォリオ」です。</li>'
+        '<li><strong>② 約定が確定したら</strong>（積立日の数日後）: SBI証券から<strong>約定履歴CSV</strong>（投資信託・米国株）をダウンロードし、'
+        '<code>python scripts/update_purchases.py 投信CSV 米国株CSV</code> を実行します。取り込み予定を確認（y）→ 書き込み → コミット・プッシュまで自動です。</li>'
+        '<li><strong>③ 翌営業日以降</strong>: ダッシュボードの反映を確認します。見る場所は「投資意思決定サマリー」「資金投入管理状況」「長期ポートフォリオ」です。</li>'
         '</ul>'
         '</div>'
 
         '<div class="guide-item">'
-        '<h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🚨 Tier到達のLINE通知が来たとき</h4>'
+        '<h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🚨 下落アラートのLINE通知が来たとき</h4>'
         '<ul style="padding-left: 0;">'
-        '<li>ダッシュボードの判定（<span class="status-badge badge-buy">BUY</span> / <span class="status-badge badge-wait">WAIT</span>）と投入予定額を確認し、買うかどうかを判断します。</li>'
+        '<li>通知は「気づき」です。LINEには最高値比と平均取得単価比だけが届きます。購入額や売買の指示は含みません。</li>'
+        '<li>買うかどうかは自分で判断します。追加買付（個別株・手動買付）に枠はなく、<strong>原資から賄います</strong>（残りは「資金投入管理状況」で確認）。</li>'
         '<li>買う場合はSBI証券で<strong>手動発注</strong>します（自動発注はしません）。約定後は上の②と同じ手順でCSVを取り込みます。</li>'
-        '<li>Tier1〜3の約定は自動で判別できないため、グラフのマーカーをTier色にしたい場合だけ <code>data/purchase_history.json</code> の <code>category</code> を <code>Tier1</code> などに書き換えます（平均取得単価には影響しません）。</li>'
-        '<li>見送る場合は <code>data/triggered.json</code> の該当Tierを <code>"invested": false</code> にします（回復後に再到達すると再通知されます）。</li>'
         '</ul>'
         '<h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📊 毎月見る数字</h4>'
         '<ul style="padding-left: 0;">'
-        f'<li><strong>サテライト比率</strong>: 目標 {target:g}%' + (f'・上限 {limit:g}%' if limit is not None else '') + '（現在値との差・上限超過の有無が表示されます）</li>'
-        f'<li><strong>S&amp;P500比率</strong>: 維持判断の基準 {thr_txt}（超えていると「見直し検討」と表示。表示のみで自動売却はしません）</li>'
-        '<li><strong>SOXの平均取得単価</strong>: 2028年月初の出口判定（上回れば売却、下回れば最大12ヶ月延長監視）に使います。</li>'
+        '<li><strong>投資意思決定サマリー</strong>: 全保有銘柄の最高値比・基準日比・平均取得単価比・Tierの到達状況。</li>'
+        '<li><strong>資金投入管理状況</strong>: 原資で積立が続けられる月数と、NISA枠（成長・つみたて）の使用率。</li>'
+        '<li><strong>長期ポートフォリオ</strong>: コア（オルカン・S&amp;P500系）とサテライト（それ以外）の割合。</li>'
         '</ul>'
         '<h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">⚠️ 注意</h4>'
         '<ul style="padding-left: 0;">'
@@ -826,152 +648,28 @@ def _build_monthly_ops_section(settings: dict, today_str: str = "") -> str:
     )
 
 
-def _build_average_cost_section(settings: dict, purchase_history: dict, navs: dict, history: list[dict]) -> str:
-    """
-    銘柄ごとの平均取得単価と現在の基準価額を並べ、含み益/含み損を表示するカードのHTMLを生成する。
-    約定実績（data/purchase_history.json）のみから算出する表示専用の情報で、
-    Tier判定・BUY/WAIT判定・LINE通知には一切使用しない。
-    """
-    cards = []
-    for fund in settings["funds"]:
-        fid = fund["id"]
-        records = filter_by_accounts(purchase_history.get(fid, []), fund_cost_accounts(fund))
-        if not fund.get("active", True) and not records:
-            continue
-
-        avg = calc_average_cost(records)
-        excluded = len(records) - (avg["count"] if avg else 0)
-        inactive_tag = _inactive_tag(fund) if not fund.get("active", True) else ""
-        color = fund.get("color", "#94a3b8")
-
-        current = navs.get(fid)
-        if current is None:
-            current = next((r.get(fid) for r in reversed(history) if r.get(fid) is not None), None)
-
-        notes = []
-        if avg is None:
-            value_html = '<div class="market-card__value" style="font-size:16px;">データなし</div>'
-            badge_html = ""
-            if records:
-                notes.append(f"約定単価が未記録の実績{excluded}件のみのため算出できません。")
-            else:
-                notes.append("約定実績が未登録です（data/purchase_history.json に追記）。")
-        else:
-            value_html = f'<div class="market-card__value">{avg["avg_cost"]:,.0f}<span class="market-card__unit">円</span></div>'
-            if current is None:
-                badge_html = ""
-            else:
-                ratio = (current - avg["avg_cost"]) / avg["avg_cost"] * 100
-                if current >= avg["avg_cost"]:
-                    badge_html = f'<span class="status-badge pos-good">🟢 含み益 {ratio:+.1f}%</span>'
-                else:
-                    badge_html = f'<span class="status-badge pos-warning">🔴 含み損 {ratio:+.1f}%</span>'
-            current_str = f"{current:,.0f}円" if current is not None else "取得失敗"
-            notes.append(f"現在の基準価額: {current_str}")
-            notes.append(f"投入金額合計: {avg['total_amount']:,.0f}円 ／ 購入{avg['count']}回")
-            if excluded:
-                notes.append(f'<span style="color:var(--yellow);">⚠ 約定単価が未記録の実績{excluded}件を除いた暫定値です</span>')
-        if fund.get("avg_cost_note"):
-            notes.append(fund["avg_cost_note"])
-
-        notes_html = "".join(f'<div class="market-card__note">{n}</div>' for n in notes)
-        cards.append(
-            f'<div class="market-card" style="border-left: 3px solid {color}">'
-            f'  <div class="market-card__label">{fund["short_name"]}{inactive_tag}</div>'
-            f'  {value_html}'
-            f'  {badge_html}'
-            f'  {notes_html}'
-            f'</div>'
-        )
-    return "\n".join(cards)
-
-
-def _build_funds_summary(triggered: dict, period_info: dict, settings: dict) -> tuple[str, str]:
-    phase_key = period_info.get("phase", "phase2")
-    is_fallback = phase_key not in ("phase2", "phase3")
-    if is_fallback:
-        phase_key = "phase2"
-
-    fallback_label = settings.get("periods", {}).get(phase_key, {}).get("label", "②期間")
-    note_html = (
-        f'<p style="font-size:11px; color:var(--text-mute); margin-bottom:10px;">'
-        f'※現在は「{period_info.get("label", "-")}」のため、参考として{fallback_label}の金額を暫定表示しています。'
-        f'</p>'
-        if is_fallback else ""
-    )
-
-    from judge import calc_remaining_funds
-    rows = []
-    skip_notes = []
-    for fund in settings["funds"]:
-        if not fund.get("active", True):
-            # 新規購入停止銘柄は原資0円のため資金投入管理の対象外
-            continue
-        fid = fund["id"]
-        rem = calc_remaining_funds(fid, triggered, phase_key, settings)
-        rows.append(
-            f'<tr>'
-            f'  <td><span style="color:{fund["color"]}; font-weight:600;">{fund["short_name"]}</span></td>'
-            f'  <td>{rem["invested"]:,}円</td>'
-            f'  <td>{rem["remaining"]:,}円</td>'
-            f'  <td>{rem["total"]:,}円</td>'
-            f'</tr>'
-        )
-        for record in triggered.get(fid, []):
-            if not record.get("invested", True):
-                date_str = record.get("date") or "-"
-                skip_notes.append(f'{fund["short_name"]} Tier{record["tier"]} ({date_str}) は投資を見送ったため、投入済み金額に含まれていません。')
-
-    if skip_notes:
-        skip_html = "".join(f'<p style="font-size:11px; color:var(--text-mute); margin-bottom:4px;">※{s}</p>' for s in skip_notes)
-        note_html += skip_html
-
-    return "\n".join(rows), note_html
-
-
 # ------------------------------------------------------------------
 # HTML レンダリング
 # ------------------------------------------------------------------
 
 def _render_html(
     today_str: str,
-    period_info: dict,
     summary_html: str,
     cards_html: str,
-    trend_html: str,
-    funds_html: str,
-    funds_note_html: str,
     market_html: str,
-    positions_html: str,
-    average_cost_html: str,
+    funding_html: str,
     integrated_html: str,
     ops_html: str,
     chart_data_json: str,
-    positions_chart_data_json: str,
     settings: dict,
+    assets: list[dict],
 ) -> str:
-    phase_label = period_info.get("label", "-")
-    days_remaining = period_info.get("days_remaining", 0)
-    baseline_date = settings.get("baseline", {}).get("date", "2026-07-07")
-    peak_start_date = settings.get("peak_start_date", "2026-08-01")
-    phase_type = period_info.get("phase", "none")
-
-    fund_tabs = "".join(
-        f'<button class="chart-tab" data-fund="{f["id"]}">{f["short_name"]}{("（表示のみ）" if f.get("inactive_label") else "（停止）") if not f.get("active", True) else ""}</button>'
-        for f in settings["funds"]
+    peak_start_date = settings.get("peak_start_date", "")
+    asset_tabs = "".join(
+        f'<button class="chart-tab" data-fund="{a["id"]}" data-currency="{a["currency"]}">{a["short_name"]}</button>'
+        for a in assets
     )
-    positions_tabs = "".join(
-        f'<button class="chart-tab" data-position="{item["id"]}">{item.get("short_name", item["id"])}</button>'
-        for item in settings.get("positions", {}).get("items", [])
-        if not item.get("hidden")
-    )
-
-    if phase_type == "before_start":
-        period_display_str = f"📅 状態: ②期間開始まであと{days_remaining}日"
-    elif phase_type == "ended":
-        period_display_str = "📅 状態: 監視期間終了"
-    else:
-        period_display_str = f"📅 現在期間: {phase_label} (期限まで残{days_remaining}日)"
+    script_js = _SCRIPT_JS.replace("__CHART_DATA__", chart_data_json)
 
     return f"""<!DOCTYPE html>
 <html lang="ja">
@@ -1242,6 +940,9 @@ html, body{{ overflow-x: hidden; }}
   .tier-progress{{ flex-direction: column; gap: 6px; }}
   .metric-value{{ font-size: 14px; }}
 }}
+.val-tier.tier-hit, .status-badge.tier-hit {{ color: var(--red); }}
+.val-tier.tier-ok, .status-badge.tier-ok {{ color: var(--green); }}
+.val-tier.tier-none, .status-badge.tier-none {{ color: var(--text-mute); }}
 </style>
 </head>
 <body>
@@ -1250,39 +951,44 @@ html, body{{ overflow-x: hidden; }}
   <div class="header-inner">
     <div class="header-title">🛡️ VALOR SHIELD <span style="font-weight:400; font-size:14px; color:var(--text-mute); margin-left:4px;">暴落監視</span></div>
     <div class="header-sub">
-      更新: {today_str} JST &nbsp;｜&nbsp; 基準日: {baseline_date}<br>
-      <span style="color:var(--blue); font-weight:600;">{period_display_str}</span>
+      更新: {today_str} JST<br>
+      <span style="color:var(--blue); font-weight:600;">全保有銘柄の下落監視</span>
     </div>
   </div>
 </header>
 
 <main class="main">
 
-  <!-- ===== 投資判断クイックガイド (アコーディオン) ===== -->
+  <!-- ===== ルールと見方 (アコーディオン) ===== -->
   <section class="guide-section">
     <button class="guide-toggle" id="guideToggle">
-      <span>💡 投資シグナルとルールの見方 (初心者向けガイド)</span>
+      <span>💡 ルールと見方</span>
       <span class="toggle-icon" style="display:inline-block; transition:transform 0.2s;">▼</span>
     </button>
     <div class="guide-content" id="guideContent">
       <div class="guide-grid" style="padding: 16px 0;">
         <div class="guide-item">
-          <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🟢 シグナル(判定)の読み方</h4>
+          <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">📐 数字の見方</h4>
           <ul style="padding-left: 0;">
-            <li style="margin-bottom:8px;"><span class="status-badge badge-buy">🟢 BUY</span> <strong>購入推奨:</strong> 目安の下落率(Tier)に到達し、現在価格が基準日から暴騰していない状態。</li>
-            <li style="margin-bottom:8px;"><span class="status-badge badge-wait">🟡 WAIT</span> <strong>上昇待機:</strong> 下落目安には達していますが、判定基準価格(直近安値付近)から価格が少し上昇(+5.0%超)しているため、手動注文の前に一時様子見を推奨する状態。</li>
-            <li style="margin-bottom:8px;"><span class="status-badge badge-hold">⚪ HOLD</span> <strong>様子見:</strong> 下落率が小さく、購入目安に達していない平常の状態。</li>
-            <li style="margin-bottom:8px;"><span class="status-badge badge-high">🔵 HIGH</span> <strong>高値更新中:</strong> 設定来高値を本日更新した、または高値圏を維持している絶好調の状態。</li>
+            <li style="margin-bottom:8px;"><strong>最高値比（下落率）:</strong> {peak_start_date}（資産によっては最初に購入した日）以降の設定来最高値から、現在値が何％下がっているか（例: <code>-15.0%</code>）。</li>
+            <li style="margin-bottom:8px;"><strong>基準日比:</strong> 基準日（2026-07-07。資産ごとに最初に購入した日のものもあります）の価格に対する、現在値の上昇・下落率。</li>
+            <li style="margin-bottom:8px;"><strong>平均取得単価比:</strong> 約定履歴から計算した平均取得単価（旧つみたてNISAを除く）に対する、現在値の損益率。米国株はUSD基準で、為替の影響を含みません。</li>
+            <li style="margin-bottom:8px;"><strong>Tier:</strong> 最高値比の「下落の目安」（Tier1〜3）。購入の指示や推奨ではありません。しきい値は銘柄ごとに <code>config/settings.json</code> で設定し、未設定の銘柄は「Tier未設定」と表示します。</li>
+            <li style="margin-bottom:8px;"><strong>価格のタイミング:</strong> 投資信託の基準価額は前営業日の海外市場終値をもとに決まるため、数字は1営業日遅れで更新されます。</li>
           </ul>
         </div>
         <div class="guide-item">
-          <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">📐 暴落判定ルール</h4>
+          <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🔔 LINE通知のルール</h4>
           <ul style="padding-left: 0;">
-            <li style="margin-bottom:8px;"><strong>最高値からの下落率:</strong> {peak_start_date}以降に記録した最高値から、現在の価格が何％下がっているかを表します（例: <code>-15.0%</code>）。この下落が設定した各Tierに達するとシグナルが発動します。</li>
-            <li style="margin-bottom:8px;"><strong>判定基準価格:</strong> 暴落初期や安値時の価格を基準とし、そこから<code>+5.0%</code>以上価格が急上昇した場合は、高値掴みを避けるため一時的に <code>WAIT</code> と判定されます。</li>
-            <li style="margin-bottom:8px;"><strong>価格決定のタイミング（重要）:</strong> 対象銘柄はいずれも海外資産に投資するため「ブラインド方式」が適用され、発注日の翌営業日の海外市場終値をもとに基準価額が決定されます。発注は当日の締切後キャンセルできないため、Tier到達＝即発注が必ずしも最適とは限りません。</li>
-            <li style="margin-bottom:8px;"><strong>保有ポジション（監視専用）について:</strong> ページ下部の「保有ポジション」は、上記のTier判定とは別枠です。階層的な追加投資の対象ではなく、取得単価との差（含み損益）を表示するだけの監視専用の項目です。</li>
-            <li style="margin-bottom:8px;"><strong>注意:</strong> 実際の買付注文は、SBI証券等の画面から手動で発注する必要があります。</li>
+            <li style="margin-bottom:8px;">下落アラートの対象は積立対象の銘柄（オルカン・S&amp;P500・Tracers・NASDAQ100）。新しいTierに到達したときだけ通知し、下落が続いている間は再通知しません。下落率がそのTierのしきい値の半分より浅くなると解除され、再び下落したときに通知されます。</li>
+            <li style="margin-bottom:8px;">LINEの内容は<strong>最高値比と平均取得単価比だけ</strong>です。購入額や売買の指示は含みません。毎朝の日次サマリーは、全保有銘柄の最高値比と平均取得単価比です。</li>
+          </ul>
+          <h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📌 運用ルール</h4>
+          <ul style="padding-left: 0;">
+            <li style="margin-bottom:8px;">積立は設定どおり継続します。SOXとFANG+は新規買付を停止し、保有は継続します。</li>
+            <li style="margin-bottom:8px;">追加買付（個別株・手動買付）は枠を設けず、<strong>原資から賄います</strong>。現金積立の期間は原資の残額で調整します。</li>
+            <li style="margin-bottom:8px;">サテライトは、オルカンとS&amp;P500以外の資産です。</li>
+            <li style="margin-bottom:8px;">実際の買付はSBI証券で手動です。このツールは気づきを与えるだけで、自動発注はしません。</li>
           </ul>
         </div>
       </div>
@@ -1292,19 +998,18 @@ html, body{{ overflow-x: hidden; }}
   <!-- ===== 毎月の運用手順（サマリ） ===== -->
   {ops_html}
 
-  <!-- ===== 総合サマリー ===== -->
+  <!-- ===== 投資意思決定サマリー ===== -->
   <section class="section-panel">
     <div class="section-title">投資意思決定サマリー</div>
     <div class="table-wrapper">
       <table class="summary-table">
         <thead>
           <tr>
-            <th>監視銘柄</th>
+            <th>銘柄</th>
             <th>最高値比 (下落率)</th>
-            <th>基準日比 (上昇率)</th>
-            <th>平均取得単価比 (含み損益)</th>
-            <th>到達段階</th>
-            <th>システム判定</th>
+            <th>基準日比</th>
+            <th>平均取得単価比</th>
+            <th>Tier到達</th>
           </tr>
         </thead>
         <tbody>
@@ -1314,24 +1019,19 @@ html, body{{ overflow-x: hidden; }}
     </div>
   </section>
 
-  <!-- ===== 平均取得単価と含み損益 ===== -->
-  <section class="section-panel">
-    <div class="section-title">💰 平均取得単価と含み損益</div>
-    <p class="market-disclaimer">これまでの約定実績（購入実績）から算出した銘柄別の平均取得単価と、現在の基準価額の比較です。参考情報であり、BUY/WAITの判定・LINE通知には使用しません。</p>
-    <div class="market-grid">
-      {average_cost_html}
-    </div>
-  </section>
-
-  <!-- ===== 銘柄詳細カード ===== -->
+  <!-- ===== 銘柄毎の詳細（全保有銘柄） ===== -->
+  <div class="section-title" style="margin-bottom:-8px;">銘柄毎の詳細</div>
   {cards_html}
 
   <!-- ===== 推移チャート ===== -->
   <section class="section-panel">
     <div class="section-title">基準価額の推移とTier閾値</div>
     <div class="chart-tabs" id="chartTabs">
-      <button class="chart-tab active" data-fund="all">全銘柄</button>
-      {fund_tabs}
+      <button class="chart-tab active" data-fund="all" data-currency="JPY">全銘柄</button>
+      {asset_tabs}
+    </div>
+    <div style="margin:0 0 8px; display:none;" id="currencyBar">
+      <button class="chart-tab" id="currencyToggle" type="button">表示通貨: USD（クリックで円換算）</button>
     </div>
     <div class="chart-wrapper">
       <canvas id="mainChart"></canvas>
@@ -1341,7 +1041,7 @@ html, body{{ overflow-x: hidden; }}
   <!-- ===== 市場心理（参考情報） ===== -->
   <section class="section-panel">
     <div class="section-title">🌡️ 市場心理（参考情報）</div>
-    <p class="market-disclaimer">これらは売買の判断基準ではありません。BUY/WAITの判定は引き続き価格（Tier）のみで行われます。判定に迷ったときの参考としてご覧ください。</p>
+    <p class="market-disclaimer">これらは売買の判断基準ではありません。Tierの到達は価格（最高値比）だけで判定されます。迷ったときの参考としてご覧ください。</p>
     <button class="guide-toggle" id="marketGuideToggle">
       <span>💡 3つの指標の見方 (初心者向けガイド)</span>
       <span class="toggle-icon" style="display:inline-block; transition:transform 0.2s;">▼</span>
@@ -1350,15 +1050,15 @@ html, body{{ overflow-x: hidden; }}
       <div class="guide-grid" style="padding: 16px 0;">
         <div class="guide-item">
           <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">😨 VIX指数（恐怖指数）</h4>
-          <p>市場参加者の不安・警戒感の大きさを数値化した指標です。数値が高いほど「市場全体が動揺している」状態を表します。FANG+やSOXのような銘柄は、市場全体が動揺すると相場全体以上に大きく下がりやすい性質があります。VIXが高いときのTier到達は「全面安に巻き込まれている」可能性、VIXが平常のままのTier到達は「個別要因での下落」の可能性を示唆します。</p>
+          <p>市場参加者の不安・警戒感の大きさを数値化した指標です。数値が高いほど「市場全体が動揺している」状態を表します。半導体やテック株のような銘柄は、市場全体が動揺すると相場全体以上に大きく下がりやすい性質があります。VIXが高いときのTier到達は「全面安に巻き込まれている」可能性、VIXが平常のままのTier到達は「個別要因での下落」の可能性を示唆します。</p>
         </div>
         <div class="guide-item">
           <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">💰 米10年国債利回り</h4>
-          <p>米国政府が10年間お金を借りる際の金利です。FANG+やSOXのような成長株は、将来の利益を現在価値に割り引いて株価が形成されるため、金利が上がると株価が下がりやすい関係が知られています。金利が急上昇しているときのTier到達は、金利要因による調整の可能性を示唆します。</p>
+          <p>米国政府が10年間お金を借りる際の金利です。成長株は、将来の利益を現在価値に割り引いて株価が形成されるため、金利が上がると株価が下がりやすい関係が知られています。金利が急上昇しているときのTier到達は、金利要因による調整の可能性を示唆します。</p>
         </div>
         <div class="guide-item">
           <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">💱 USD/JPY（ドル円）</h4>
-          <p>1ドルが何円かを表すレートです。各銘柄はいずれも為替ヘッジなしのため、基準価額の変動には「米国株そのものの値動き」と「円ドルレートの変動」の両方が混ざっています。円高が進んでいるときのTier到達は、見た目の下落の一部が為替要因である可能性を示唆します。</p>
+          <p>1ドルが何円かを表すレートです。投資信託は為替ヘッジなしのため、基準価額の変動には「米国株そのものの値動き」と「円ドルレートの変動」の両方が混ざっています。円高が進んでいるときのTier到達は、見た目の下落の一部が為替要因である可能性を示唆します。</p>
         </div>
       </div>
     </div>
@@ -1367,115 +1067,101 @@ html, body{{ overflow-x: hidden; }}
     </div>
   </section>
 
-  <!-- ===== トレンドサマリー ===== -->
-  <section class="section-panel">
-    <div class="section-title">直近モメンタム (トレンド)</div>
-    <div class="trend-grid">
-      {trend_html}
-    </div>
-  </section>
+  <!-- ===== 資金投入管理状況 ===== -->
+  {funding_html}
 
-  <!-- ===== 残資金サマリー ===== -->
-  <section class="section-panel">
-    <div class="section-title">資金投入管理状況 &nbsp;<span style="font-size:12px; font-weight:normal; color:var(--text-mute);">({phase_label})</span></div>
-    {funds_note_html}
-    <div class="table-wrapper">
-      <table class="funds-table">
-        <thead>
-          <tr>
-            <th>銘柄</th>
-            <th>投入済金額</th>
-            <th>残枠資金</th>
-            <th>原資合計</th>
-          </tr>
-        </thead>
-        <tbody>
-          {funds_html}
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- ===== 保有ポジション（監視専用・Tier対象外） ===== -->
-  <section class="section-panel">
-    <div class="section-title">📦 保有ポジション（監視専用）</div>
-    <p class="market-disclaimer">この銘柄は暴落時の階層的追加投資（Tier）の対象ではありません。取得単価との差（含み損益）を監視・通知するだけの保有ポジションです。</p>
-    <div class="market-grid">
-      {positions_html}
-    </div>
-    <div class="chart-tabs" id="positionsChartTabs" style="margin-top:20px;">
-      <button class="chart-tab active" data-position="all">全ポジション</button>
-      {positions_tabs}
-    </div>
-    <div class="chart-wrapper">
-      <canvas id="positionsChart"></canvas>
-    </div>
-  </section>
-
-  <!-- ===== 長期ポートフォリオ（統合ビュー。最下部） ===== -->
+  <!-- ===== 長期ポートフォリオ（最下部） ===== -->
   {integrated_html}
 
 </main>
 
 <footer class="footer">
-  <p>データ出典：日本経済新聞 電子版（日経電子版）投資信託ページ ｜ 本ダッシュボードは投資判断の支援のみを行います。投資は自己責任で行ってください。</p>
+  <p>データ出典：日本経済新聞 電子版（投資信託の基準価額）・Yahoo Finance（米国株） ｜ 本ダッシュボードは投資判断の支援のみを行います。投資は自己責任で行ってください。</p>
 </footer>
 
 <script>
-const RAW_DATA = {chart_data_json};
+{script_js}
+</script>
+</body>
+</html>
+"""
+
+
+_SCRIPT_JS = r"""
+const RAW_DATA = __CHART_DATA__;
 
 let chartInstance = null;
+let currentFilter = 'all';
+let usdMode = true; // 米国株の銘柄タブでは、既定でUSD表示（クリックで円換算に切替）
 
 // アコーディオンの開閉制御（汎用化して複数箇所で使い回す）
-function setupAccordion(toggleId, contentId) {{
+function setupAccordion(toggleId, contentId) {
   const toggle = document.getElementById(toggleId);
   const content = document.getElementById(contentId);
   if (!toggle || !content) return;
   const icon = toggle.querySelector('.toggle-icon');
-  toggle.addEventListener('click', () => {{
-    if (content.style.maxHeight && content.style.maxHeight !== '0px') {{
+  toggle.addEventListener('click', () => {
+    if (content.style.maxHeight && content.style.maxHeight !== '0px') {
       content.style.maxHeight = '0px';
       icon.style.transform = 'rotate(0deg)';
-    }} else {{
+    } else {
       content.style.maxHeight = content.scrollHeight + 'px';
       icon.style.transform = 'rotate(180deg)';
-    }}
-  }});
-}}
+    }
+  });
+}
 setupAccordion('guideToggle', 'guideContent');
 setupAccordion('marketGuideToggle', 'marketGuideContent');
 setupAccordion('opsToggle', 'opsContent');
 
-function purchaseMarkerColor(category) {{
+function purchaseMarkerColor(category) {
   if (category === 'Tier1') return '#eab308';
   if (category === 'Tier2') return '#f97316';
   if (category === 'Tier3') return '#ef4444';
   return '#3b82f6';
-}}
+}
 
-function buildDatasets(fundFilter) {{
+// 米国株（USD）は、「全銘柄」では円換算、銘柄タブではUSD（usdModeがfalseなら円換算）で表示する
+function showsUsd(ds, filter) {
+  return ds.currency === 'USD' && filter !== 'all' && usdMode;
+}
+
+function unitOf(ds, filter) {
+  return showsUsd(ds, filter) ? 'USD' : '円';
+}
+
+function buildDatasets(filter) {
   const priceDatasets = RAW_DATA.datasets
-    .filter(ds => fundFilter === 'all' || ds.id === fundFilter)
-    .map(ds => ({{
-      ...ds,
-      borderWidth: 2.5,
-      pointRadius: 0,
-      pointHoverRadius: 6,
-      tension: 0.25,
-      shadowColor: ds.borderColor,
-      shadowBlur: 8,
-    }}));
+    .filter(ds => filter === 'all' || ds.id === filter)
+    .map(ds => {
+      const usd = showsUsd(ds, filter);
+      return {
+        ...ds,
+        data: ds.currency === 'USD' && !usd ? ds.data_jpy : ds.data,
+        unit: unitOf(ds, filter),
+        borderWidth: 2.5,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        tension: 0.25,
+        shadowColor: ds.borderColor,
+        shadowBlur: 8,
+      };
+    });
 
   // 「全銘柄」表示時はTier閾値線・約定実績マーカーは描画しない（視認性を優先）
-  if (fundFilter === 'all') return priceDatasets;
+  if (filter === 'all') return priceDatasets;
+  const selected = RAW_DATA.datasets.find(ds => ds.id === filter);
+  // 円換算表示のUSD銘柄は、閾値線・約定マーカー（USD建て）を描画しない
+  if (selected && selected.currency === 'USD' && !usdMode) return priceDatasets;
 
   const extra = [];
+  const unit = selected ? unitOf(selected, filter) : '円';
 
-  const tierInfo = RAW_DATA.tier_lines[fundFilter];
-  if (tierInfo) {{
-    tierInfo.tier_values.forEach((val, i) => {{
-      extra.push({{
-        label: `Tier${{i + 1}}閾値 (-${{tierInfo.tiers[i]}}%)`,
+  const tierInfo = RAW_DATA.tier_lines[filter];
+  if (tierInfo) {
+    tierInfo.tier_values.forEach((val, i) => {
+      extra.push({
+        label: `Tier${i + 1}閾値 (-${tierInfo.tiers[i]}%)`,
         data: RAW_DATA.labels.map(() => val),
         borderColor: tierInfo.color,
         borderWidth: 1,
@@ -1485,16 +1171,17 @@ function buildDatasets(fundFilter) {{
         tension: 0,
         shadowBlur: 0,
         isTierLine: true,
-      }});
-    }});
-  }}
+        unit,
+      });
+    });
+  }
 
-  const markers = (RAW_DATA.purchase_markers && RAW_DATA.purchase_markers[fundFilter]) || [];
-  if (markers.length > 0) {{
+  const markers = (RAW_DATA.purchase_markers && RAW_DATA.purchase_markers[filter]) || [];
+  if (markers.length > 0) {
     const arr = new Array(RAW_DATA.labels.length).fill(null);
     const meta = new Array(RAW_DATA.labels.length).fill(null);
-    markers.forEach(m => {{ arr[m.index] = m.price; meta[m.index] = m; }});
-    extra.push({{
+    markers.forEach(m => { arr[m.index] = m.price; meta[m.index] = m; });
+    extra.push({
       label: '約定実績',
       data: arr,
       showLine: false,
@@ -1507,217 +1194,139 @@ function buildDatasets(fundFilter) {{
       shadowBlur: 0,
       isPurchaseMarker: true,
       markerMeta: meta,
-    }});
-  }}
+      unit,
+    });
+  }
 
   return [...priceDatasets, ...extra];
-}}
+}
 
-function renderChart(fundFilter = 'all') {{
+function formatValue(v, unit) {
+  if (v === null || v === undefined) return '-';
+  return unit === 'USD'
+    ? v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USD'
+    : v.toLocaleString() + '円';
+}
+
+function axisUnit(filter) {
+  const selected = RAW_DATA.datasets.find(ds => ds.id === filter);
+  return selected ? unitOf(selected, filter) : '円';
+}
+
+function renderChart(filter = 'all') {
+  currentFilter = filter;
   const ctx = document.getElementById('mainChart').getContext('2d');
-  const datasets = buildDatasets(fundFilter);
+  const datasets = buildDatasets(filter);
 
-  if (chartInstance) {{
+  // USD銘柄のタブでだけ、通貨の切替ボタンを表示する
+  const selected = RAW_DATA.datasets.find(ds => ds.id === filter);
+  const bar = document.getElementById('currencyBar');
+  const toggle = document.getElementById('currencyToggle');
+  const isUsd = !!selected && selected.currency === 'USD';
+  bar.style.display = isUsd ? 'block' : 'none';
+  toggle.textContent = usdMode ? '表示通貨: USD（クリックで円換算）' : '表示通貨: 円換算（クリックでUSD）';
+
+  if (chartInstance) {
     chartInstance.data.datasets = datasets;
+    chartInstance.options.plugins.legend.display = filter === 'all';
     chartInstance.update('active');
     return;
-  }}
+  }
 
   // カスタムプラグインで線の発光エフェクトを描画
-  const shadowPlugin = {{
+  const shadowPlugin = {
     id: 'shadowPlugin',
-    beforeDatasetsDraw(chart, args, options) {{
-      const {{ ctx }} = chart;
+    beforeDatasetsDraw(chart, args, options) {
+      const { ctx } = chart;
       ctx.save();
-      chart.data.datasets.forEach((dataset, index) => {{
+      chart.data.datasets.forEach((dataset, index) => {
         const meta = chart.getDatasetMeta(index);
-        if (!meta.hidden && dataset.shadowBlur > 0) {{
+        if (!meta.hidden && dataset.shadowBlur > 0) {
           ctx.shadowColor = dataset.shadowColor;
           ctx.shadowBlur = dataset.shadowBlur;
-        }}
-      }});
-    }},
-    afterDatasetsDraw(chart, args, options) {{
+        }
+      });
+    },
+    afterDatasetsDraw(chart, args, options) {
       chart.ctx.restore();
-    }}
-  }};
+    }
+  };
 
-  chartInstance = new Chart(ctx, {{
+  chartInstance = new Chart(ctx, {
     type: 'line',
-    data: {{
+    data: {
       labels: RAW_DATA.labels,
       datasets,
-    }},
+    },
     plugins: [shadowPlugin],
-    options: {{
+    options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: {{ duration: 500, easing: 'easeOutQuart' }},
-      interaction: {{ mode: 'index', intersect: false }},
-      plugins: {{
-        legend: {{ 
-          display: fundFilter === 'all', 
+      animation: { duration: 500, easing: 'easeOutQuart' },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: filter === 'all',
           position: 'top',
-          labels: {{ color: '#94a3b8', font: {{ size: 11, family: 'Inter' }}, boxWidth: 12, usePointStyle: true }} 
-        }},
-        tooltip: {{
+          labels: { color: '#94a3b8', font: { size: 11, family: 'Inter' }, boxWidth: 12, usePointStyle: true }
+        },
+        tooltip: {
           backgroundColor: 'rgba(11, 13, 20, 0.95)',
           titleColor: '#94a3b8',
           bodyColor: '#f8fafc',
           borderColor: 'rgba(255,255,255,0.08)',
           borderWidth: 1,
           padding: 10,
-          bodyFont: {{ family: 'Inter' }},
-          titleFont: {{ family: 'Inter' }},
+          bodyFont: { family: 'Inter' },
+          titleFont: { family: 'Inter' },
           filter: (item) => item.raw !== null && item.raw !== undefined,
-          callbacks: {{
-            label: (item) => {{
-              if (item.dataset.isPurchaseMarker) {{
+          callbacks: {
+            label: (item) => {
+              if (item.dataset.isPurchaseMarker) {
                 const m = item.dataset.markerMeta[item.dataIndex];
                 if (!m) return null;
                 return [
-                  `★ 約定日: ${{m.date}}`,
-                  `　約定単価: ${{m.price.toLocaleString()}}円`,
-                  `　区分: ${{m.category}}`,
-                  `　投入金額: ${{(m.amount || 0).toLocaleString()}}円`,
+                  `★ 約定日: ${m.date}`,
+                  `　約定単価: ${formatValue(m.price, m.currency === 'USD' ? 'USD' : '円')}`,
+                  `　区分: ${m.category}`,
+                  `　投入金額: ${(m.amount || 0).toLocaleString()}円`,
                 ];
-              }}
-              return `  ${{item.dataset.label}}: ${{item.raw !== null ? item.raw.toLocaleString() + '円' : '-'}}`;
-            }},
-          }},
-        }},
-      }},
-      scales: {{
-        x: {{
-          grid: {{ color: 'rgba(255,255,255,0.02)' }},
-          ticks: {{ color: '#64748b', font: {{ size: 9, family: 'Inter' }}, maxTicksLimit: 10 }},
-        }},
-        y: {{
-          grid: {{ color: 'rgba(255,255,255,0.02)' }},
-          ticks: {{
+              }
+              return `  ${item.dataset.label}: ${formatValue(item.raw, item.dataset.unit || '円')}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.02)' },
+          ticks: { color: '#64748b', font: { size: 9, family: 'Inter' }, maxTicksLimit: 10 },
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.02)' },
+          ticks: {
             color: '#64748b',
-            font: {{ size: 9, family: 'Inter' }},
-            callback: (v) => v !== null ? v.toLocaleString() + '円' : ''
-          }},
-        }},
-      }},
-    }},
-  }});
-}}
+            font: { size: 9, family: 'Inter' },
+            callback: (v) => v !== null ? v.toLocaleString() + (axisUnit(currentFilter) === 'USD' ? ' USD' : '円') : ''
+          },
+        },
+      },
+    },
+  });
+}
 
-document.getElementById('chartTabs').addEventListener('click', (e) => {{
+document.getElementById('chartTabs').addEventListener('click', (e) => {
   const btn = e.target.closest('.chart-tab');
   if (!btn) return;
   document.querySelectorAll('#chartTabs .chart-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderChart(btn.dataset.fund);
-}});
+});
+
+document.getElementById('currencyToggle').addEventListener('click', () => {
+  usdMode = !usdMode;
+  renderChart(currentFilter);
+});
 
 renderChart('all');
-
-// ===== 保有ポジション（監視専用）チャート =====
-const POSITIONS_RAW_DATA = {positions_chart_data_json};
-let positionsChartInstance = null;
-
-function buildPositionsDatasets(positionFilter) {{
-  const priceDatasets = POSITIONS_RAW_DATA.datasets
-    .filter(ds => positionFilter === 'all' || ds.id === positionFilter)
-    .map(ds => ({{ ...ds, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 6, tension: 0.25 }}));
-
-  if (positionFilter === 'all') return priceDatasets;
-
-  const markers = (POSITIONS_RAW_DATA.purchase_markers && POSITIONS_RAW_DATA.purchase_markers[positionFilter]) || [];
-  if (markers.length === 0) return priceDatasets;
-
-  const arr = new Array(POSITIONS_RAW_DATA.labels.length).fill(null);
-  const meta = new Array(POSITIONS_RAW_DATA.labels.length).fill(null);
-  markers.forEach(m => {{ arr[m.index] = m.price; meta[m.index] = m; }});
-  const extra = {{
-    label: '約定実績',
-    data: arr,
-    showLine: false,
-    pointStyle: 'star',
-    pointRadius: arr.map(v => v !== null ? 9 : 0),
-    pointHoverRadius: arr.map(v => v !== null ? 11 : 0),
-    pointBackgroundColor: '#eab308',
-    pointBorderColor: '#fff',
-    pointBorderWidth: 1,
-    isPurchaseMarker: true,
-    markerMeta: meta,
-  }};
-  return [...priceDatasets, extra];
-}}
-
-function renderPositionsChart(positionFilter = 'all') {{
-  const canvas = document.getElementById('positionsChart');
-  if (!canvas || !POSITIONS_RAW_DATA.datasets || POSITIONS_RAW_DATA.datasets.length === 0) return;
-  const ctx = canvas.getContext('2d');
-  const datasets = buildPositionsDatasets(positionFilter);
-
-  if (positionsChartInstance) {{
-    positionsChartInstance.data.datasets = datasets;
-    positionsChartInstance.update('active');
-    return;
-  }}
-
-  positionsChartInstance = new Chart(ctx, {{
-    type: 'line',
-    data: {{ labels: POSITIONS_RAW_DATA.labels, datasets }},
-    options: {{
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: {{ duration: 500, easing: 'easeOutQuart' }},
-      interaction: {{ mode: 'index', intersect: false }},
-      plugins: {{
-        legend: {{
-          display: positionFilter === 'all',
-          position: 'top',
-          labels: {{ color: '#94a3b8', font: {{ size: 11, family: 'Inter' }}, boxWidth: 12, usePointStyle: true }}
-        }},
-        tooltip: {{
-          backgroundColor: 'rgba(11, 13, 20, 0.95)',
-          titleColor: '#94a3b8',
-          bodyColor: '#f8fafc',
-          borderColor: 'rgba(255,255,255,0.08)',
-          borderWidth: 1,
-          padding: 10,
-          filter: (item) => item.raw !== null && item.raw !== undefined,
-          callbacks: {{
-            label: (item) => {{
-              if (item.dataset.isPurchaseMarker) {{
-                const m = item.dataset.markerMeta[item.dataIndex];
-                if (!m) return null;
-                return [
-                  `★ 取得日: ${{m.date}}`,
-                  `　取得単価: ${{m.price.toLocaleString()}}円`,
-                  `　投入金額: ${{(m.amount || 0).toLocaleString()}}円`,
-                ];
-              }}
-              return `  ${{item.dataset.label}}: ${{item.raw !== null ? item.raw.toLocaleString() + '円' : '-'}}`;
-            }},
-          }},
-        }},
-      }},
-      scales: {{
-        x: {{ grid: {{ color: 'rgba(255,255,255,0.02)' }}, ticks: {{ color: '#64748b', font: {{ size: 9, family: 'Inter' }}, maxTicksLimit: 10 }} }},
-        y: {{ grid: {{ color: 'rgba(255,255,255,0.02)' }}, ticks: {{ color: '#64748b', font: {{ size: 9, family: 'Inter' }}, callback: (v) => v !== null ? v.toLocaleString() + '円' : '' }} }},
-      }},
-    }},
-  }});
-}}
-
-const positionsChartTabsEl = document.getElementById('positionsChartTabs');
-if (positionsChartTabsEl) {{
-  positionsChartTabsEl.addEventListener('click', (e) => {{
-    const btn = e.target.closest('.chart-tab');
-    if (!btn) return;
-    document.querySelectorAll('#positionsChartTabs .chart-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    renderPositionsChart(btn.dataset.position);
-  }});
-}}
-renderPositionsChart('all');
-</script>
-</body>
-</html>
 """

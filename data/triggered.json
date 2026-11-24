@@ -1,53 +1,14 @@
 {
-  "fang": [],
-  "sox": [
-    {
-      "tier": 1,
-      "date": null,
-      "invested": true,
-      "note": null,
-      "recovered": false
-    },
-    {
-      "tier": 2,
-      "date": "2026-10-26",
-      "invested": true,
-      "note": null,
-      "recovered": false
-    },
-    {
-      "tier": 3,
-      "date": "2026-11-09",
-      "invested": true,
-      "note": null,
-      "recovered": false
-    }
-  ],
-  "sp500": [
-    {
-      "tier": 1,
-      "date": "2026-11-23",
-      "invested": true,
-      "note": null,
-      "recovered": false
-    }
-  ],
-  "orkan": [
-    {
-      "tier": 1,
-      "date": "2026-11-09",
-      "invested": true,
-      "note": null,
-      "recovered": false
-    }
-  ],
-  "tracers": [
-    {
-      "tier": 1,
-      "date": "2026-11-23",
-      "invested": true,
-      "note": null,
-      "recovered": false
-    }
-  ]
+  "sp500": {
+    "tier": 1,
+    "date": "2026-11-23"
+  },
+  "orkan": {
+    "tier": 1,
+    "date": "2026-11-09"
+  },
+  "tracers": {
+    "tier": 1,
+    "date": "2026-11-23"
+  }
 }

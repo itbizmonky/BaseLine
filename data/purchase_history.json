@@ -4,13 +4,19 @@
       "date": "2026-07-07",
       "price": 94387,
       "category": "①分",
-      "amount": 106610
+      "amount": 106610,
+      "units": 11295,
+      "frame": "growth",
+      "account": "attack"
     },
     {
       "date": "2026-08-25",
       "price": 97668,
       "category": "定期積立",
-      "amount": 8824
+      "amount": 8824,
+      "units": 904,
+      "frame": "growth",
+      "account": "attack"
     }
   ],
   "sox": [
@@ -18,19 +24,28 @@
       "date": "2026-07-07",
       "price": 50163,
       "category": "①分",
-      "amount": 177683
+      "amount": 177683,
+      "units": 35422,
+      "frame": "growth",
+      "account": "attack"
     },
     {
       "date": "2026-08-03",
       "price": 42266,
       "category": "Tier1",
-      "amount": 33316
+      "amount": 33316,
+      "units": 7883,
+      "frame": "growth",
+      "account": "attack"
     },
     {
       "date": "2026-08-25",
       "price": 43629,
       "category": "定期積立",
-      "amount": 14706
+      "amount": 14706,
+      "units": 3371,
+      "frame": "growth",
+      "account": "attack"
     },
     {
       "date": "2026-09-25",
@@ -38,15 +53,17 @@
       "category": "定期積立",
       "amount": 14706,
       "account": "attack",
-      "units": 3091
+      "units": 3091,
+      "frame": "growth"
     },
     {
       "date": "2026-10-21",
       "price": 42880,
-      "category": "未分類",
+      "category": "追加買付",
       "amount": 48853,
       "account": "attack",
-      "units": 11393
+      "units": 11393,
+      "frame": "growth"
     },
     {
       "date": "2026-10-26",
@@ -54,15 +71,17 @@
       "category": "定期積立",
       "amount": 14706,
       "account": "attack",
-      "units": 3617
+      "units": 3617,
+      "frame": "growth"
     },
     {
       "date": "2026-11-10",
       "price": 38074,
-      "category": "未分類",
+      "category": "追加買付",
       "amount": 53305,
       "account": "attack",
-      "units": 14001
+      "units": 14001,
+      "frame": "growth"
     }
   ],
   "sp500": [
@@ -70,13 +89,19 @@
       "date": "2026-07-07",
       "price": 44920,
       "category": "①分",
-      "amount": 298508
+      "amount": 298508,
+      "units": 66454,
+      "frame": "growth",
+      "account": "attack"
     },
     {
       "date": "2026-08-25",
       "price": 44836,
       "category": "定期積立",
-      "amount": 24706
+      "amount": 24706,
+      "units": 5511,
+      "frame": "growth",
+      "account": "attack"
     },
     {
       "date": "2026-09-25",
@@ -84,7 +109,8 @@
       "category": "定期積立",
       "amount": 11765,
       "account": "attack",
-      "units": 2612
+      "units": 2612,
+      "frame": "growth"
     },
     {
       "date": "2026-10-26",
@@ -92,60 +118,100 @@
       "category": "定期積立",
       "amount": 11765,
       "account": "attack",
-      "units": 2664
+      "units": 2664,
+      "frame": "growth"
     },
     {
       "date": "2026-11-10",
       "price": 44001,
-      "category": "未分類",
+      "category": "追加買付",
       "amount": 20000,
       "account": "attack",
-      "units": 4546
+      "units": 4546,
+      "frame": "growth"
     }
   ],
   "orkan": [
     {
-      "date": "2026-06-10",
-      "price": 37197,
-      "category": "別枠積立",
+      "date": "2026-02-10",
+      "price": 34429,
       "amount": 10000,
+      "units": 2905,
+      "frame": "tsumitate",
       "account": "side",
-      "units": 2689
+      "category": "カード積立"
     },
     {
-      "date": "2026-06-30",
-      "category": "既存残高",
-      "amount": 50000,
-      "units": 14196,
-      "account": "side"
+      "date": "2026-03-10",
+      "price": 33619,
+      "amount": 10000,
+      "units": 2975,
+      "frame": "tsumitate",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-04-10",
+      "price": 34507,
+      "amount": 10000,
+      "units": 2898,
+      "frame": "tsumitate",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-05-12",
+      "price": 36642,
+      "amount": 10000,
+      "units": 2729,
+      "frame": "tsumitate",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-06-10",
+      "price": 37197,
+      "category": "カード積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2689,
+      "frame": "tsumitate"
     },
     {
       "date": "2026-07-07",
       "price": 38532,
       "category": "①分",
-      "amount": 127932
+      "amount": 127932,
+      "units": 33202,
+      "frame": "growth",
+      "account": "attack"
     },
     {
       "date": "2026-07-10",
       "price": 38334,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "account": "side",
-      "units": 2609
+      "units": 2609,
+      "frame": "tsumitate"
     },
     {
       "date": "2026-08-25",
       "price": 38471,
       "category": "定期積立",
-      "amount": 10588
+      "amount": 10588,
+      "units": 2753,
+      "frame": "growth",
+      "account": "attack"
     },
     {
       "date": "2026-09-10",
       "price": 37174,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "account": "side",
-      "units": 2690
+      "units": 2690,
+      "frame": "tsumitate"
     },
     {
       "date": "2026-09-25",
@@ -153,15 +219,17 @@
       "category": "定期積立",
       "amount": 10588,
       "account": "attack",
-      "units": 2763
+      "units": 2763,
+      "frame": "growth"
     },
     {
       "date": "2026-10-13",
       "price": 38401,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "account": "side",
-      "units": 2604
+      "units": 2604,
+      "frame": "tsumitate"
     },
     {
       "date": "2026-10-26",
@@ -169,23 +237,26 @@
       "category": "定期積立",
       "amount": 10588,
       "account": "attack",
-      "units": 2847
+      "units": 2847,
+      "frame": "growth"
     },
     {
       "date": "2026-11-10",
       "price": 37143,
-      "category": "未分類",
+      "category": "追加買付",
       "amount": 23987,
       "account": "attack",
-      "units": 6458
+      "units": 6458,
+      "frame": "growth"
     },
     {
       "date": "2026-11-11",
       "price": 37279,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "account": "side",
-      "units": 2683
+      "units": 2683,
+      "frame": "tsumitate"
     }
   ],
   "tracers": [
@@ -195,7 +266,8 @@
       "category": "定期積立",
       "amount": 21765,
       "account": "attack",
-      "units": 12848
+      "units": 12848,
+      "frame": "growth"
     },
     {
       "date": "2026-10-26",
@@ -203,15 +275,17 @@
       "category": "定期積立",
       "amount": 21765,
       "account": "attack",
-      "units": 13392
+      "units": 13392,
+      "frame": "growth"
     },
     {
       "date": "2026-11-10",
       "price": 15810,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 20000,
       "account": "side",
-      "units": 12650
+      "units": 12650,
+      "frame": "growth"
     }
   ],
   "newnisa_orkan": [
@@ -219,46 +293,100 @@
       "date": "2026-08-06",
       "price": 19818,
       "category": "①分",
-      "amount": 75000
+      "amount": 75000,
+      "units": 37845,
+      "frame": "growth",
+      "account": "child"
     },
     {
       "date": "2026-09-14",
       "price": 19220,
       "category": "追加購入",
-      "amount": 75000
+      "amount": 75000,
+      "units": 39022,
+      "frame": "growth",
+      "account": "child"
     },
     {
       "date": "2026-10-06",
       "price": 19872,
-      "category": "未分類",
+      "category": "子供用積立",
       "amount": 75000,
-      "account": "attack",
-      "units": 37742
+      "account": "child",
+      "units": 37742,
+      "frame": "growth"
     },
     {
       "date": "2026-10-27",
       "price": 19412,
       "category": "定期積立",
       "amount": 75000,
-      "account": "attack",
-      "units": 38636
+      "account": "child",
+      "units": 38636,
+      "frame": "growth"
     }
   ],
   "sbi_v_sp500": [
     {
-      "date": "2026-06-10",
-      "price": 39775,
-      "category": "別枠積立",
-      "amount": 10000,
-      "account": "side",
-      "units": 2515
+      "date": "2025-12-31",
+      "category": "既存残高（2025年以前）",
+      "amount": 886682,
+      "units": 322861,
+      "account": "side"
     },
     {
-      "date": "2026-06-30",
-      "category": "既存残高",
-      "amount": 946682,
-      "units": 338996,
-      "account": "side"
+      "date": "2026-01-06",
+      "price": 36175,
+      "amount": 10000,
+      "units": 2765,
+      "frame": "tsumitate",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-02-04",
+      "price": 36120,
+      "amount": 10000,
+      "units": 2769,
+      "frame": "tsumitate",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-03-10",
+      "price": 35906,
+      "amount": 10000,
+      "units": 2785,
+      "frame": "tsumitate",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-04-10",
+      "price": 36433,
+      "amount": 10000,
+      "units": 2745,
+      "frame": "tsumitate",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-05-12",
+      "price": 39133,
+      "amount": 10000,
+      "units": 2556,
+      "frame": "tsumitate",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-06-10",
+      "price": 39775,
+      "category": "カード積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 2515,
+      "frame": "tsumitate"
     },
     {
       "date": "2026-06-30",
@@ -270,99 +398,203 @@
     {
       "date": "2026-07-10",
       "price": 41066,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "account": "side",
-      "units": 2435
+      "units": 2435,
+      "frame": "tsumitate"
     },
     {
       "date": "2026-08-12",
       "price": 41402,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "account": "side",
-      "units": 2416
+      "units": 2416,
+      "frame": "tsumitate"
     },
     {
       "date": "2026-09-10",
       "price": 39510,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "account": "side",
-      "units": 2531
+      "units": 2531,
+      "frame": "tsumitate"
     },
     {
       "date": "2026-10-13",
       "price": 41662,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "account": "side",
-      "units": 2401
+      "units": 2401,
+      "frame": "tsumitate"
     }
   ],
   "nasdaq100": [
     {
-      "date": "2026-06-10",
-      "price": 27825,
-      "category": "別枠積立",
+      "date": "2026-02-10",
+      "price": 23491,
       "amount": 10000,
+      "units": 4257,
+      "frame": "growth",
       "account": "side",
-      "units": 3594
+      "category": "カード積立"
     },
     {
-      "date": "2026-06-30",
-      "category": "既存残高",
-      "amount": 50001,
-      "units": 19951,
-      "account": "side"
+      "date": "2026-03-10",
+      "price": 23457,
+      "amount": 10000,
+      "units": 4263,
+      "frame": "growth",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-04-10",
+      "price": 23807,
+      "amount": 10000,
+      "units": 4201,
+      "frame": "growth",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-05-12",
+      "price": 27504,
+      "amount": 10000,
+      "units": 3636,
+      "frame": "growth",
+      "account": "side",
+      "category": "カード積立"
+    },
+    {
+      "date": "2026-06-10",
+      "price": 27825,
+      "category": "カード積立",
+      "amount": 10000,
+      "account": "side",
+      "units": 3594,
+      "frame": "growth"
     },
     {
       "date": "2026-07-10",
       "price": 28744,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "units": 3479,
-      "account": "side"
+      "account": "side",
+      "frame": "growth"
     },
     {
       "date": "2026-08-12",
       "price": 28064,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "units": 3564,
-      "account": "side"
+      "account": "side",
+      "frame": "growth"
     },
     {
       "date": "2026-09-10",
       "price": 26985,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "units": 3706,
-      "account": "side"
+      "account": "side",
+      "frame": "growth"
     },
     {
       "date": "2026-10-13",
       "price": 29002,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 10000,
       "account": "side",
-      "units": 3448
+      "units": 3448,
+      "frame": "growth"
     },
     {
       "date": "2026-11-10",
       "price": 26330,
-      "category": "別枠積立",
+      "category": "追加買付",
       "amount": 20000,
-      "account": "side",
-      "units": 7596
+      "account": "attack",
+      "units": 7596,
+      "frame": "growth"
     },
     {
       "date": "2026-11-11",
       "price": 26293,
-      "category": "別枠積立",
+      "category": "カード積立",
       "amount": 20000,
       "account": "side",
-      "units": 7607
+      "units": 7607,
+      "frame": "growth"
+    }
+  ],
+  "nvda": [
+    {
+      "date": "2026-11-12",
+      "price": 175.0,
+      "amount": 55982,
+      "units": 2,
+      "currency": "USD",
+      "frame": "growth",
+      "account": "attack",
+      "category": "追加買付"
+    },
+    {
+      "date": "2026-11-13",
+      "price": 161.0,
+      "amount": 51565,
+      "units": 2,
+      "currency": "USD",
+      "frame": "growth",
+      "account": "attack",
+      "category": "追加買付"
+    },
+    {
+      "date": "2026-11-20",
+      "price": 151.0,
+      "amount": 24098,
+      "units": 1,
+      "currency": "USD",
+      "frame": "growth",
+      "account": "attack",
+      "category": "追加買付"
+    },
+    {
+      "date": "2026-11-20",
+      "price": 148.0,
+      "amount": 23619,
+      "units": 1,
+      "currency": "USD",
+      "frame": "growth",
+      "account": "attack",
+      "category": "追加買付"
+    }
+  ],
+  "tesla": [
+    {
+      "date": "2026-08-07",
+      "price": 317.01,
+      "amount": 50347,
+      "units": 1,
+      "currency": "USD",
+      "frame": "growth",
+      "account": "attack",
+      "category": "追加買付"
+    },
+    {
+      "date": "2026-08-07",
+      "price": 317.01,
+      "amount": 50347,
+      "units": 1,
+      "currency": "USD",
+      "frame": "growth",
+      "account": "attack",
+      "category": "追加買付"
     }
   ]
 }

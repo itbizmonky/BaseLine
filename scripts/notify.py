@@ -40,6 +40,10 @@ COLOR_NEUTRAL = "#94a3b8"     # グレー（ゼロ・データなし）
 
 ROW_MARGIN = "lg"             # 銘柄の行間（LINEのFlexでは lg = 12px）
 
+# 枠の見出し: 銘柄名（白）と区別できるよう、水色の太字＋背景の帯にする（全ての枠で同じ色）
+COLOR_BG_GROUP = "#1e2a44"
+COLOR_GROUP = "#38bdf8"
+
 LABEL_DRAWDOWN = "最高比"
 LABEL_AVG = "平均比"
 
@@ -295,10 +299,11 @@ def build_daily_summary_flex(today_str: str, results: list[dict], dashboard_url:
         for g in groups:
             if not g["lines"]:
                 continue
-            title = [_text(g["label"], size="sm", weight="bold", flex=5, wrap=True)]
+            title = [_text(g["label"], size="sm", weight="bold", color=COLOR_GROUP, flex=5, wrap=True)]
             if g.get("monthly_total"):
-                title.append(_text(f"月{g['monthly_total']:,}円", size="xs", color=COLOR_LABEL, align="end", flex=3))
-            rows.append({"type": "box", "layout": "horizontal", "margin": "xl", "contents": title})
+                title.append(_text(f"月{g['monthly_total']:,}円", size="xs", color=COLOR_GROUP, align="end", flex=3))
+            rows.append({"type": "box", "layout": "horizontal", "margin": "xl", "contents": title,
+                         "backgroundColor": COLOR_BG_GROUP, "cornerRadius": "md", "paddingAll": "md"})
             for ln in g["lines"]:
                 rows.append(_summary_row(_name_node(ln), ln.get("drawdown"), ln.get("avg_cost_ratio")))
     else:

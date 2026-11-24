@@ -832,6 +832,7 @@ body{{
 .pf-share{{ display: flex; align-items: center; gap: 10px; }}
 .group-row td{{ background: rgba(255,255,255,0.04); color: var(--text); font-weight: 700; font-size: 12px; padding: 10px 12px; border-bottom: none; }}
 .group-sub{{ font-size: 11px; font-weight: 400; color: var(--text-mute); margin-left: 6px; }}
+.group-row td{{ border-left: 3px solid currentColor; color: #38bdf8; }}
 .pf-share .sat-bar{{ margin: 0; width: 90px; height: 8px; flex: none; }}
 .val-drawdown{{ color: var(--red); font-weight: 700; }}
 .val-tier{{ font-weight: 600; color: var(--blue); }}
@@ -977,9 +978,9 @@ html, body{{ overflow-x: hidden; }}
   .tier-progress{{ flex-direction: column; gap: 6px; }}
   .metric-value{{ font-size: 14px; }}
 }}
-.val-tier.tier-hit, .status-badge.tier-hit {{ color: var(--red); }}
-.val-tier.tier-ok, .status-badge.tier-ok {{ color: var(--green); }}
-.val-tier.tier-none, .status-badge.tier-none {{ color: var(--text-mute); }}
+.val-tier.tier-hit, .status-badge.tier-hit {{ color: #fb923c; font-weight: 700; }}
+.val-tier.tier-ok, .status-badge.tier-ok {{ color: #94a3b8; }}
+.val-tier.tier-none, .status-badge.tier-none {{ color: #64748b; }}
 </style>
 </head>
 <body>

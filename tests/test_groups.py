@@ -137,6 +137,10 @@ class GroupedNotifyTest(unittest.TestCase):
         for small in ("原資買付分", "カード積立分", "つみたて分", "2027/1/10発注分からの設定"):   # LINEには小さな補足を出さない
             self.assertNotIn(small, labels)
         self.assertTrue(all(c for _, c in texts))               # すべての文字に色が付いている
+        colors = dict(texts)
+        for heading in ("積立設定（原資枠）", "積立設定（クレカ枠）", "保持枠", "旧NISA", "こども枠"):
+            self.assertEqual(colors[heading], notify.COLOR_GROUP)     # 枠の見出しは全て水色
+            self.assertNotEqual(colors[heading], notify.COLOR_TEXT)   # 銘柄名（白）とは違う色
 
 
 if __name__ == "__main__":

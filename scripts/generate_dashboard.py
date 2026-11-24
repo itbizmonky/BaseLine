@@ -18,6 +18,7 @@ from pathlib import Path
 
 from assets import KIND_FUND, all_assets
 from funding import load_status
+from groups import build_groups
 from judge import format_drawdown
 from portfolio import build_integrated_view
 from purchase_history import calc_average_cost, cost_records, purchase_markers
@@ -74,11 +75,12 @@ def generate(
     usdjpy = (market_display or {}).get("usdjpy", {}).get("value")
 
     chart_data = _build_chart_data(assets, history, positions_history, settings, peak, usdjpy, purchases)
-    summary_html = _build_summary_table(results)
+    groups = build_groups(settings, purchases, results, usdjpy, today_str)
+    summary_html = _build_summary_table(groups)
     view = build_integrated_view(settings, purchases, _current_prices(results, history), usdjpy)
-    cards_html = _build_asset_cards(results, settings, purchases, view)
+    cards_html = _build_asset_cards(results, settings, purchases, view, groups)
     market_html = _build_market_sentiment(market_display or {})
-    integrated_html = _build_integrated_section(view)
+    integrated_html = _build_integrated_section(view, groups)
     funding_html = _build_funding_section(load_status())
     ops_html = _build_monthly_ops_section(settings, today_str)
 
@@ -232,24 +234,38 @@ def _gain_html(gain: float | None) -> str:
     return f'<span style="color:var(--{"green" if gain >= 0 else "red"});font-weight:600;">{gain:+.1f}%</span>'
 
 
-def _build_summary_table(results: list[dict]) -> str:
+def _group_header_row(group: dict, colspan: int, extra: str = "") -> str:
+    """枠の見出し行（積立設定の枠は月額の合計と、設定の開始時期の注記つき）。"""
+    monthly = f' <span class="group-sub">月{group["monthly_total"]:,}円</span>' if group.get("monthly_total") else ""
+    note = f' <span class="group-sub">※{group["note"]}</span>' if group.get("note") else ""
+    return f'<tr class="group-row"><td colspan="{colspan}">{group["label"]}{monthly}{note}{extra}</td></tr>'
+
+
+def _build_summary_table(groups: list[dict]) -> str:
+    """投資意思決定サマリー。5つの枠ごとに見出しをつけ、銘柄ごとの前日比・平均取得単価比・Tier到達を表示する。"""
     rows = []
-    for r in results:
-        tier_text, tier_css = _tier_status(r)
-        stale = '<span class="inactive-tag">（前回値）</span>' if r.get("stale") else ""
-        rows.append(
-            f'<tr>'
-            f'  <td data-label="銘柄">'
-            f'    <div style="display:flex;align-items:center;gap:8px;">'
-            f'      <span class="fund-dot" style="background-color:{r["color"]};box-shadow:0 0 6px {r["color"]}"></span>'
-            f'      <span style="font-weight:600;">{r["short_name"]}</span>{_role_tag(r["role"])}{stale}'
-            f'    </div>'
-            f'  </td>'
-            f'  <td data-label="前日比">{_gain_html(r.get("day_change"))}</td>'
-            f'  <td data-label="平均取得単価比">{_gain_html(r.get("avg_cost_ratio"))}</td>'
-            f'  <td data-label="Tier到達"><span class="val-tier {tier_css}">{tier_text}</span></td>'
-            f'</tr>'
-        )
+    for g in groups:
+        if not g["lines"]:
+            continue
+        rows.append(_group_header_row(g, 4))
+        for r in g["lines"]:
+            tier_text, tier_css = _tier_status(r)
+            stale = '<span class="inactive-tag">（前回値）</span>' if r.get("stale") else ""
+            tag = f'<span class="inactive-tag">（{r["tag"]}）</span>' if r.get("tag") else ""
+            monthly = f'<span class="group-sub">月{r["monthly"]:,}円</span>' if r.get("monthly") else ""
+            rows.append(
+                f'<tr>'
+                f'  <td data-label="銘柄">'
+                f'    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+                f'      <span class="fund-dot" style="background-color:{r["color"]};box-shadow:0 0 6px {r["color"]}"></span>'
+                f'      <span style="font-weight:600;">{r["short_name"]}</span>{tag}{_role_tag(r["role"])}{monthly}{stale}'
+                f'    </div>'
+                f'  </td>'
+                f'  <td data-label="前日比">{_gain_html(r.get("day_change"))}</td>'
+                f'  <td data-label="平均取得単価比">{_gain_html(r.get("avg_cost_ratio"))}</td>'
+                f'  <td data-label="Tier到達"><span class="val-tier {tier_css}">{tier_text}</span></td>'
+                f'</tr>'
+            )
     return "\n".join(rows)
 
 
@@ -257,9 +273,13 @@ def _build_summary_table(results: list[dict]) -> str:
 # 銘柄カード HTML（全保有資産）
 # ------------------------------------------------------------------
 
-def _build_asset_cards(results: list[dict], settings: dict, purchase_history: dict, view: dict | None = None) -> str:
+def _build_asset_cards(results: list[dict], settings: dict, purchase_history: dict, view: dict | None = None, groups: list[dict] | None = None) -> str:
     baseline_dates = settings.get("baseline", {}).get("dates", {})
     holdings = {r["id"]: r for r in ((view or {}).get("rows", []) + (view or {}).get("separate", []))}
+    member_of: dict[str, list[str]] = {}
+    for g in groups or []:
+        for ln in g["lines"]:
+            member_of.setdefault(ln["asset_id"], []).append(g["label"])
     default_start = settings.get("peak_start_date", "")
     html_parts = []
 
@@ -300,6 +320,7 @@ def _build_asset_cards(results: list[dict], settings: dict, purchase_history: di
     <div class="fund-card__name-block">
       <span class="fund-tag" style="border: 1px solid {color}50; color:{color};">{r['short_name']}</span>{_role_tag(r['role'])}
       <div class="fund-card__name">{r['name']}</div>
+      <div class="metric-sub" style="margin-top:4px;">枠: {"・".join(member_of.get(aid, [])) or "-"}</div>
     </div>
     <div class="status-badge {tier_css}">{tier_text}</div>
   </div>
@@ -491,7 +512,7 @@ def _bar(share: float) -> str:
     return f'<div class="sat-bar"><div class="sat-bar__fill" style="width:{fill:.1f}%"></div></div>'
 
 
-def _build_integrated_section(view: dict | None) -> str:
+def _build_integrated_section(view: dict | None, groups: list[dict] | None = None) -> str:
     """
     長期ポートフォリオ（保有資産の合算）のセクションHTMLを生成する（表示専用）。
     評価額の大きい順に、コア／サテライトの区分・評価額・全体に占める割合・口座別の内訳を表示する。
@@ -519,41 +540,38 @@ def _build_integrated_section(view: dict | None) -> str:
         )
 
     rows = []
-    for r in view["rows"]:
-        share = r.get("share")
-        share_cell = f'<div class="pf-share"><span>{share:.1f}%</span>{_bar(share)}</div>' if share is not None else "-"
-        detail = "／".join(
-            f'{a["label"]} {_yen(a["value"])}' for a in r["accounts"] if len(r["accounts"]) > 1
-        )
-        detail_html = f'<div class="market-card__note">{detail}</div>' if detail else ""
-        rows.append(
-            '<tr>'
-            f'<td data-label="銘柄"><div class="pf-name"><div class="pf-name__title">'
-            f'<span class="fund-dot" style="background-color:{r["color"]}"></span>'
-            f'<span style="font-weight:600;">{r["short_name"]}</span></div>'
-            f'{detail_html}</div></td>'
-            f'<td data-label="区分">{ROLE_LABELS.get(r["role"], r["role"])}</td>'
-            f'<td data-label="評価額">{_yen(r["value"])}</td>'
-            f'<td data-label="全体に占める割合">{share_cell}</td>'
-            '</tr>'
-        )
+    for g in groups or []:
+        if not g["lines"]:
+            continue
+        sub_share = f'（{g["share"]:.1f}%）' if g["share"] is not None else ("（比率の分母に含めない）" if g["key"] == "child" else "")
+        rows.append(_group_header_row(g, 4, f' <span class="group-sub">／ 小計 {_yen(g["value"])}{sub_share}</span>'))
+        for ln in sorted(g["lines"], key=lambda x: -(x["value"] or 0)):
+            share = (ln["value"] / total * 100) if (total and ln["value"] is not None and g["key"] != "child") else None
+            share_cell = f'<div class="pf-share"><span>{share:.1f}%</span>{_bar(share)}</div>' if share is not None else "-"
+            tag = f'<div class="market-card__note">{ln["tag"]}</div>' if ln.get("tag") else ""
+            rows.append(
+                '<tr>'
+                f'<td data-label="銘柄"><div class="pf-name"><div class="pf-name__title">'
+                f'<span class="fund-dot" style="background-color:{ln["color"]}"></span>'
+                f'<span style="font-weight:600;">{ln["short_name"]}</span></div>'
+                f'{tag}</div></td>'
+                f'<td data-label="区分">{ROLE_LABELS.get(ln["role"], ln["role"])}</td>'
+                f'<td data-label="評価額">{_yen(ln["value"])}</td>'
+                f'<td data-label="全体に占める割合">{share_cell}</td>'
+                '</tr>'
+            )
     table = (
         '<div class="table-wrapper"><table class="summary-table">'
-        '<thead><tr><th>銘柄（評価額の大きい順）</th><th>区分</th><th>評価額</th><th>全体に占める割合</th></tr></thead>'
+        '<thead><tr><th>銘柄（枠ごと・評価額の大きい順）</th><th>区分</th><th>評価額</th><th>全体に占める割合</th></tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table></div>'
     )
-
-    separate = ""
-    if view["separate"]:
-        parts = "、".join(f'{s["short_name"]} {_yen(s["value"])}' for s in view["separate"])
-        separate = f'<p class="market-disclaimer" style="margin-top:10px;">別会計（比率の分母に含めません）: {parts}</p>'
 
     return (
         '<section class="section-panel">'
         '<div class="section-title">🏦 長期ポートフォリオ（保有資産の合算）</div>'
         '<p class="market-disclaimer">保有している全資産（投資信託・米国株・旧つみたてNISAを含む）の評価額を合算し、コア（オルカン・S&amp;P500系）とサテライト（それ以外）の割合を表示します。'
         '参考情報であり、Tierの判定・LINE通知には使用しません。</p>'
-        f'{summary}{table}{separate}'
+        f'{summary}{table}'
         '<p class="market-disclaimer" style="margin-top:10px;">評価額＝保有口数（株数）×現在値。保有口数は約定履歴から集計し、米国株はUSD株価×USD/JPYで円換算しています。</p>'
         '</section>'
     )
@@ -812,6 +830,8 @@ body{{
 .pf-name{{ display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; }}
 .pf-name__title{{ display: flex; align-items: center; gap: 8px; }}
 .pf-share{{ display: flex; align-items: center; gap: 10px; }}
+.group-row td{{ background: rgba(255,255,255,0.04); color: var(--text); font-weight: 700; font-size: 12px; padding: 10px 12px; border-bottom: none; }}
+.group-sub{{ font-size: 11px; font-weight: 400; color: var(--text-mute); margin-left: 6px; }}
 .pf-share .sat-bar{{ margin: 0; width: 90px; height: 8px; flex: none; }}
 .val-drawdown{{ color: var(--red); font-weight: 700; }}
 .val-tier{{ font-weight: 600; color: var(--blue); }}
@@ -941,6 +961,8 @@ html, body{{ overflow-x: hidden; }}
   .summary-table td{{ display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 6px; border: none; font-size: 13px; }}
   .summary-table td::before{{ content: attr(data-label); color: var(--text-mute); font-size: 11px; white-space: nowrap; }}
   .summary-table td:first-child{{ font-size: 14px; padding-bottom: 6px; justify-content: flex-start; text-align: left; }}
+  .summary-table tr.group-row{{ padding: 0; margin-top: 8px; border-bottom: none; }}
+  .summary-table tr.group-row td{{ display: block; border-radius: 8px; font-size: 12px; }}
   .summary-table td:first-child::before{{ content: none; }}
   .funds-table th, .funds-table td{{ padding: 10px 4px; font-size: 12px; }}
 }}

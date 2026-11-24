@@ -61,6 +61,14 @@ class NotifyMessageTest(unittest.TestCase):
         self.assertIn("平均比", labels)
         self.assertEqual(bubble["type"], "bubble")
 
+    def test_flex_is_dark_and_every_text_has_a_readable_color(self):
+        for bubble in (notify.build_daily_summary_flex("2026-11-24", RESULTS, "https://example.com/"),
+                       notify.build_tier_flex("テスト銘柄", "テスト", 1, 12.2, -6.8, "https://example.com/")):
+            self.assertEqual(bubble["styles"]["body"]["backgroundColor"], notify.COLOR_BG_BODY)
+            self.assertEqual(bubble["styles"]["header"]["backgroundColor"], notify.COLOR_BG_HEADER)
+            for text, color in flex_texts(bubble):
+                self.assertTrue(color, f"色の指定がない文字（既定の黒＝暗い背景で読めない）: {text}")
+
     def test_tier_flex_shows_only_two_ratios(self):
         bubble = notify.build_tier_flex("テスト銘柄", "テスト", 1, 12.2, -6.8, "https://example.com/")
         texts = [x for x, _ in flex_texts(bubble)]

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 ACCOUNT_LABELS = {"attack": "原資買付", "side": "カード積立", "legacy": "旧NISA", "child": "子供用"}
 
 
-def _asset_value(units: float, price: float | None, currency: str, usdjpy: float | None) -> float | None:
+def asset_value(units: float, price: float | None, currency: str, usdjpy: float | None) -> float | None:
     """評価額（円）。現在値（USDの場合は為替も）が無ければ None。"""
     if price is None:
         return None
@@ -63,10 +63,10 @@ def build_integrated_view(
         if holdings["total_units"] <= 0:
             continue
         price = prices.get(asset["id"])
-        value = _asset_value(holdings["total_units"], price, asset["currency"], usdjpy)
+        value = asset_value(holdings["total_units"], price, asset["currency"], usdjpy)
         accounts = []
         for acc, h in sorted(holdings["by_account"].items()):
-            acc_value = _asset_value(h["units"], price, asset["currency"], usdjpy)
+            acc_value = asset_value(h["units"], price, asset["currency"], usdjpy)
             accounts.append({"account": acc, "label": ACCOUNT_LABELS.get(acc, acc), "units": h["units"], "value": acc_value})
         row = {
             "id": asset["id"],

@@ -27,10 +27,18 @@ logger = logging.getLogger(__name__)
 
 LINE_API_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
-COLOR_PLUS = "#16a34a"    # 緑（プラス）
-COLOR_MINUS = "#dc2626"   # 赤（マイナス）
-COLOR_NEUTRAL = "#6b7280"  # グレー（ゼロ・データなし）
-COLOR_LABEL = "#9ca3af"
+# ダーク配色（ダッシュボードの色調に合わせる。白背景はまぶしいため）
+COLOR_BG_HEADER = "#0b0d13"   # ヘッダー・フッターの背景（ダッシュボードの背景色）
+COLOR_BG_BODY = "#121622"     # 本文の背景（ダッシュボードのパネル色）
+COLOR_TEXT = "#f1f5f9"        # 本文の文字（明るいグレー）
+COLOR_LABEL = "#94a3b8"       # 見出し・補足の文字
+COLOR_LINE = "#2a3045"        # 区切り線
+COLOR_LINK = "#60a5fa"        # リンク（青）
+COLOR_PLUS = "#4ade80"        # 緑（プラス）。暗い背景で見やすい明るさ
+COLOR_MINUS = "#f87171"       # 赤（マイナス）。同上
+COLOR_NEUTRAL = "#94a3b8"     # グレー（ゼロ・データなし）
+
+ROW_MARGIN = "lg"             # 銘柄の行間（LINEのFlexでは lg = 12px）
 
 LABEL_DRAWDOWN = "最高比"
 LABEL_AVG = "平均比"
@@ -181,22 +189,48 @@ def build_error_message(failed_funds: list[str], today_str: str, dashboard_url: 
     )
 
 
+def _group_title(group: dict) -> str:
+    """枠の見出し。積立設定の枠は月額の合計つき（例: 積立設定（原資枠） 月58,824円）。"""
+    title = group["label"]
+    if group.get("monthly_total"):
+        title += f" 月{group['monthly_total']:,}円"
+    return title
+
+
+def _line_name(line: dict) -> str:
+    """行の銘柄名。LINEでは補足（原資買付分など）は付けない（枠の見出しで区別できるため）。"""
+    return line["short_name"]
+
+
+def _summary_entry_text(name: str, dd: float | None, avg: float | None) -> str:
+    dd_text = f"{_sign_mark(_drawdown_value(dd))}{_drawdown_text(dd)}" if dd is not None else "⚪取得不可"
+    return f"{name}\n  {dd_text}　{_sign_mark(avg)}{format_avg_cost_ratio(avg)}"
+
+
 def build_daily_summary_message(
     today_str: str,
     results: list[dict],
     dashboard_url: str,
+    groups: list[dict] | None = None,
 ) -> str:
     """
-    日次の監視サマリー通知（テキスト版）。保有全銘柄を1銘柄1行で「最高比」「平均比」の2値だけ表示する。
-    results の各要素: {"short_name", "drawdown", "avg_cost_ratio"}（表示順は渡された順）
+    日次の監視サマリー通知（テキスト版）。保有全銘柄を「最高比」「平均比」の2値だけ表示する。
+    groups（groups.build_groups の結果）があれば、5つの枠ごとに見出しをつけて並べる。なければ渡された順の1銘柄ずつ。
+    results / 各行の要素: {"short_name", "drawdown", "avg_cost_ratio"}
     """
     lines = [f"📊 【日次監視完了】{today_str}", f"（{LABEL_DRAWDOWN}／{LABEL_AVG}）", ""]
-    for r in results:
-        dd = r.get("drawdown")
-        avg = r.get("avg_cost_ratio")
-        dd_text = f"{_sign_mark(_drawdown_value(dd))}{_drawdown_text(dd)}" if dd is not None else "⚪取得不可"
-        lines.append(f"{r['short_name']}\n  {dd_text}　{_sign_mark(avg)}{format_avg_cost_ratio(avg)}")
-    lines.append(f"\n💻 詳細ダッシュボード:\n{dashboard_url}")
+    if groups:
+        for g in groups:
+            if not g["lines"]:
+                continue
+            lines.append(f"■ {_group_title(g)}")
+            for ln in g["lines"]:
+                lines.append(_summary_entry_text(_line_name(ln), ln.get("drawdown"), ln.get("avg_cost_ratio")))
+            lines.append("")
+    else:
+        for r in results:
+            lines.append(_summary_entry_text(r["short_name"], r.get("drawdown"), r.get("avg_cost_ratio")))
+    lines.append(f"💻 詳細ダッシュボード:\n{dashboard_url}")
     return "\n".join(lines)
 
 
@@ -205,7 +239,18 @@ def build_daily_summary_message(
 # ------------------------------------------------------------------
 
 def _text(text: str, **kwargs) -> dict:
+    """文字要素。色の指定がなければ、暗い背景で読める明るい文字色にする（Flexの既定は黒）。"""
+    kwargs.setdefault("color", COLOR_TEXT)
     return {"type": "text", "text": text, **kwargs}
+
+
+def _dark_styles() -> dict:
+    """バブル全体のダーク配色（ヘッダー・フッターは濃く、本文はやや明るい面）。"""
+    return {
+        "header": {"backgroundColor": COLOR_BG_HEADER},
+        "body": {"backgroundColor": COLOR_BG_BODY},
+        "footer": {"backgroundColor": COLOR_BG_HEADER},
+    }
 
 
 def _ratio_cell(text: str, value: float | None) -> dict:
@@ -217,33 +262,52 @@ def _link_footer(dashboard_url: str) -> dict:
     return {
         "type": "box",
         "layout": "vertical",
-        "contents": [{"type": "button", "style": "link", "height": "sm",
+        "contents": [{"type": "button", "style": "link", "height": "sm", "color": COLOR_LINK,
                       "action": {"type": "uri", "label": "ダッシュボードを開く", "uri": dashboard_url}}],
     }
 
 
-def build_daily_summary_flex(today_str: str, results: list[dict], dashboard_url: str) -> dict:
-    """日次サマリーのFlexメッセージ（bubble）。1銘柄1行で、最高比・平均比を色つきで表示する。"""
-    rows = [{
-        "type": "box", "layout": "horizontal", "contents": [
-            _text("銘柄", size="xs", color=COLOR_LABEL, flex=5),
-            _text(LABEL_DRAWDOWN, size="xs", color=COLOR_LABEL, align="end", flex=3),
-            _text(LABEL_AVG, size="xs", color=COLOR_LABEL, align="end", flex=3),
-        ],
-    }, {"type": "separator", "margin": "sm"}]
-    for r in results:
-        dd = r.get("drawdown")
-        avg = r.get("avg_cost_ratio")
-        rows.append({
-            "type": "box", "layout": "horizontal", "margin": "md", "contents": [
-                _text(r["short_name"], size="sm", wrap=True, flex=5),
-                _ratio_cell(_drawdown_text(dd) if dd is not None else "-", _drawdown_value(dd)),
-                _ratio_cell(format_avg_cost_ratio(avg), avg),
-            ],
-        })
+def _summary_row(name_node: dict, dd: float | None, avg: float | None) -> dict:
+    return {"type": "box", "layout": "horizontal", "margin": ROW_MARGIN, "contents": [
+        name_node,
+        _ratio_cell(_drawdown_text(dd) if dd is not None else "-", _drawdown_value(dd)),
+        _ratio_cell(format_avg_cost_ratio(avg), avg),
+    ]}
+
+
+def _name_node(line: dict) -> dict:
+    """銘柄名（補足は付けない。枠の見出しで区別できるため）。"""
+    return _text(line["short_name"], size="sm", wrap=True, flex=5)
+
+
+def build_daily_summary_flex(today_str: str, results: list[dict], dashboard_url: str, groups: list[dict] | None = None) -> dict:
+    """
+    日次サマリーのFlexメッセージ（bubble）。最高比・平均比を色つきで表示する。
+    groups があれば5つの枠ごとの見出しつき、なければ1銘柄1行（results の順）。
+    """
+    col_header = {"type": "box", "layout": "horizontal", "contents": [
+        _text("銘柄", size="xs", color=COLOR_LABEL, flex=5),
+        _text(LABEL_DRAWDOWN, size="xs", color=COLOR_LABEL, align="end", flex=3),
+        _text(LABEL_AVG, size="xs", color=COLOR_LABEL, align="end", flex=3),
+    ]}
+    rows = [col_header, {"type": "separator", "margin": "md", "color": COLOR_LINE}]
+    if groups:
+        for g in groups:
+            if not g["lines"]:
+                continue
+            title = [_text(g["label"], size="sm", weight="bold", flex=5, wrap=True)]
+            if g.get("monthly_total"):
+                title.append(_text(f"月{g['monthly_total']:,}円", size="xs", color=COLOR_LABEL, align="end", flex=3))
+            rows.append({"type": "box", "layout": "horizontal", "margin": "xl", "contents": title})
+            for ln in g["lines"]:
+                rows.append(_summary_row(_name_node(ln), ln.get("drawdown"), ln.get("avg_cost_ratio")))
+    else:
+        for r in results:
+            rows.append(_summary_row(_text(r["short_name"], size="sm", wrap=True, flex=5), r.get("drawdown"), r.get("avg_cost_ratio")))
     return {
         "type": "bubble",
         "size": "mega",
+        "styles": _dark_styles(),
         "header": {"type": "box", "layout": "vertical", "contents": [
             _text("📊 日次監視完了", weight="bold", size="md"),
             _text(today_str, size="xs", color=COLOR_LABEL),
@@ -263,13 +327,14 @@ def build_tier_flex(
 ) -> dict:
     """Tier到達アラートのFlexメッセージ（bubble）。最高比・平均比だけを色つきで表示する。"""
     def line(label: str, text: str, value: float | None) -> dict:
-        return {"type": "box", "layout": "horizontal", "margin": "md", "contents": [
+        return {"type": "box", "layout": "horizontal", "margin": ROW_MARGIN, "contents": [
             _text(label, size="sm", color=COLOR_LABEL, flex=2),
             _text(text, size="lg", weight="bold", align="end", color=_sign_color(value), flex=3),
         ]}
 
     return {
         "type": "bubble",
+        "styles": _dark_styles(),
         "header": {"type": "box", "layout": "vertical", "contents": [
             _text("🚨 下落アラート", weight="bold", size="md", color=COLOR_MINUS),
             _text(f"{short_name}  Tier{tier} 到達", weight="bold", size="lg", wrap=True),
@@ -310,10 +375,10 @@ def notify_fetch_error(failed_funds: list[str], today_str: str, dashboard_url: s
     return _send_line_message(msg)
 
 
-def notify_daily_summary(today_str: str, results: list[dict], dashboard_url: str) -> bool:
-    """日次の監視サマリー通知を送信する"""
-    bubble = build_daily_summary_flex(today_str, results, dashboard_url)
-    fallback = build_daily_summary_message(today_str, results, dashboard_url)
+def notify_daily_summary(today_str: str, results: list[dict], dashboard_url: str, groups: list[dict] | None = None) -> bool:
+    """日次の監視サマリー通知を送信する。groups（groups.build_groups の結果）があれば5つの枠ごとに並べる。"""
+    bubble = build_daily_summary_flex(today_str, results, dashboard_url, groups)
+    fallback = build_daily_summary_message(today_str, results, dashboard_url, groups)
     alt = f"日次監視完了 {today_str}（全{len(results)}銘柄の{LABEL_DRAWDOWN}・{LABEL_AVG}）"
     logger.info("デイリーサマリー通知を送信")
     return _send_flex_message(alt, bubble, fallback)

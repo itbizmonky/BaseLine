@@ -52,6 +52,7 @@ from judge import (
 )
 from notify import notify_tier_reached, notify_fetch_error, notify_daily_summary
 from generate_dashboard import generate
+from groups import build_groups
 
 # ロガー設定
 logging.basicConfig(
@@ -337,8 +338,9 @@ def main(dry_run: bool = False) -> None:
     # ----------------------------------------------------------
     # 6. 日次サマリー通知（全保有資産の最高値比・平均取得単価比）
     # ----------------------------------------------------------
+    groups = build_groups(settings, purchases, results, market_display.get("usdjpy", {}).get("value"), today_str)
     if not dry_run and notifications_enabled:
-        notify_daily_summary(today_str, results, dashboard_url)
+        notify_daily_summary(today_str, results, dashboard_url, groups)
     else:
         logger.info("[DRY RUN or 通知OFF] デイリーサマリー通知をスキップ")
 

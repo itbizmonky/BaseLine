@@ -59,6 +59,7 @@ scripts/market_data.py   # 市場心理指標（VIX/米10年金利/USD-JPY）
 scripts/positions.py     # 米国株の株価取得（Yahoo Finance）・履歴
 scripts/purchase_history.py  # 購入実績の読み込み・平均取得単価（円/USD）の算出（表示専用。通知の判断には使わない）
 scripts/portfolio.py     # 長期ポートフォリオ（評価額・コア/サテライト比率）の統合ビュー（表示専用の純粋関数）
+scripts/groups.py        # 保有を5つの枠（積立設定の原資枠／クレカ枠・保持枠・旧NISA・こども枠）にグルーピング。LINE・サマリー・ポートフォリオで共通（表示専用）
 scripts/funding.py       # 資金管理（原資の月数・NISA枠使用率）。原資の総額は Personal/capital.json（Git管理外）
 scripts/import_sbi_history.py  # SBI証券の約定履歴CSV（投信・米国株）をpurchase_history.jsonへ取り込む（手動実行。CSVはコミットしない）
 scripts/update_purchases.py    # 取り込み→資金管理の更新→purchase_history.jsonとfunding_status.jsonのコミット→pull --rebase→プッシュを確認つきで1コマンド実行
@@ -111,6 +112,7 @@ GitHub Actions 上では `workflow_dispatch` から `dry_run: true` で手動テ
 - **`--dry-run`は通知送信コードパスを通らない**（8/10-11の本番クラッシュの教訓、要件定義書 残課題No.7）。通知関連の変更は`_send_line_message`をモックして`notify_*`を実際に呼んで確認すること（`tests/test_notify_settings.py`）。また`--dry-run`もデータファイル（`data/*`）を書き換えるため、テスト後は`git checkout`で戻す（本番の記録はGitHub Actionsに一本化）。
 - **購入実績の口座区分 `account`（資金源）**: `attack`＝原資から出した買付（現金積立・手動の追加買付・個別株）／`side`＝クレジットカードの積立／`legacy`＝旧つみたてNISA（平均取得単価に含めない）／`child`＝子供用資金（別会計。原資・比率から除外）。NISA枠は`frame`（`growth`/`tsumitate`）。カード積立か手動買付かは約定履歴CSVに列がないため、`monthly_schedule.card.phases`の銘柄・金額・枠の一致で判定する（同月に重なる場合は日付が最も遅い約定をカード積立とみなして警告）。積立設定を変更したら`monthly_schedule`も更新すること。
 - **資金管理の公開範囲**: 公開ページには「積立が続けられる月数」「原資の使用率」「NISA枠の使用率」だけを出し、原資の総額は`Personal/capital.json`（Git管理外）に置く。`funding_status.json`は金額を含めない。
+- **枠のグルーピング**（`groups.py`）: 所属は`monthly_schedule`（cash / card）の最新の設定から自動判定。複数の枠に設定がある銘柄は両方に出し、保有は資金源（attack→原資枠、side→クレカ枠）で分ける。旧NISA（legacy）は別の行。保持枠＝積立設定のない保有、こども枠＝`role=separate`。
 - **平均取得単価・比率の定義**: 平均取得単価は旧NISA（`legacy`）を除く全口座。米国株はUSD基準（為替を含まない）。長期ポートフォリオはコア（オルカン・S&P500系）以外をサテライトとし、子供用は分母に含めず、目標・上限は置かない（表示のみ）。
 - **公開リポジトリ**: SBI証券の約定履歴CSV等の個人の取引明細・原資の総額はコミットしない（`Personal/`は`.gitignore`で除外。ファイルはUTF-8で保存）。
 - **スコープ外**: 自動発注、高度な予測AI、複数ユーザー対応・ログイン機能、売却判定の自動化は要件定義で明示的に対象外。

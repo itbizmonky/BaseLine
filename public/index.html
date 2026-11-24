@@ -125,6 +125,10 @@ body{
 .summary-table tr:last-child td{ border-bottom: none; }
 .summary-table td:first-child{ font-family: 'Noto Sans JP', sans-serif; }
 .fund-dot{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.pf-name{ display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; }
+.pf-name__title{ display: flex; align-items: center; gap: 8px; }
+.pf-share{ display: flex; align-items: center; gap: 10px; }
+.pf-share .sat-bar{ margin: 0; width: 90px; height: 8px; flex: none; }
 .val-drawdown{ color: var(--red); font-weight: 700; }
 .val-tier{ font-weight: 600; color: var(--blue); }
 
@@ -252,7 +256,7 @@ html, body{ overflow-x: hidden; }
   .summary-table tr:last-child{ border-bottom: none; }
   .summary-table td{ display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 6px; border: none; font-size: 13px; }
   .summary-table td::before{ content: attr(data-label); color: var(--text-mute); font-size: 11px; white-space: nowrap; }
-  .summary-table td:first-child{ font-size: 14px; padding-bottom: 6px; }
+  .summary-table td:first-child{ font-size: 14px; padding-bottom: 6px; justify-content: flex-start; text-align: left; }
   .summary-table td:first-child::before{ content: none; }
   .funds-table th, .funds-table td{ padding: 10px 4px; font-size: 12px; }
 }
@@ -297,9 +301,9 @@ html, body{ overflow-x: hidden; }
         <div class="guide-item">
           <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">📐 数字の見方</h4>
           <ul style="padding-left: 0;">
-            <li style="margin-bottom:8px;"><strong>最高値比（下落率）:</strong> 2026-07-07（資産によっては最初に購入した日）以降の設定来最高値から、現在値が何％下がっているか（例: <code>-15.0%</code>）。</li>
-            <li style="margin-bottom:8px;"><strong>基準日比:</strong> 基準日（2026-07-07。資産ごとに最初に購入した日のものもあります）の価格に対する、現在値の上昇・下落率。</li>
-            <li style="margin-bottom:8px;"><strong>平均取得単価比:</strong> 約定履歴から計算した平均取得単価（旧つみたてNISAを除く）に対する、現在値の損益率。米国株はUSD基準で、為替の影響を含みません。</li>
+            <li style="margin-bottom:8px;"><strong>最高値比（下落率）:</strong> 2026-07-07（資産によっては最初に購入した日）以降の設定来最高値から、現在値が何％下がっているか（例: <code>-15.0%</code>）。銘柄毎の詳細とLINEに表示します（LINEでは「最高比」）。</li>
+            <li style="margin-bottom:8px;"><strong>前日比:</strong> 直前の記録（値が変わった前営業日）に対する、現在値の上昇・下落率。</li>
+            <li style="margin-bottom:8px;"><strong>平均取得単価比:</strong> 約定履歴から計算した平均取得単価（旧つみたてNISAを除く）に対する、現在値の損益率（LINEでは「平均比」）。米国株はUSD基準で、為替の影響を含みません。</li>
             <li style="margin-bottom:8px;"><strong>Tier:</strong> 最高値比の「下落の目安」（Tier1〜3）。購入の指示や推奨ではありません。しきい値は銘柄ごとに <code>config/settings.json</code> で設定し、未設定の銘柄は「Tier未設定」と表示します。</li>
             <li style="margin-bottom:8px;"><strong>価格のタイミング:</strong> 投資信託の基準価額は前営業日の海外市場終値をもとに決まるため、数字は1営業日遅れで更新されます。</li>
           </ul>
@@ -308,7 +312,7 @@ html, body{ overflow-x: hidden; }
           <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🔔 LINE通知のルール</h4>
           <ul style="padding-left: 0;">
             <li style="margin-bottom:8px;">下落アラートの対象は積立対象の銘柄（オルカン・S&amp;P500・Tracers・NASDAQ100）。新しいTierに到達したときだけ通知し、下落が続いている間は再通知しません。下落率がそのTierのしきい値の半分より浅くなると解除され、再び下落したときに通知されます。</li>
-            <li style="margin-bottom:8px;">LINEの内容は<strong>最高値比と平均取得単価比だけ</strong>です。購入額や売買の指示は含みません。毎朝の日次サマリーは、全保有銘柄の最高値比と平均取得単価比です。</li>
+            <li style="margin-bottom:8px;">LINEの内容は<strong>最高比（最高値比）と平均比（平均取得単価比）だけ</strong>で、プラスは緑・マイナスは赤で表示します。購入額や売買の指示は含みません。毎朝の日次サマリーは、全保有銘柄の最高比と平均比です。</li>
           </ul>
           <h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📌 運用ルール</h4>
           <ul style="padding-left: 0;">
@@ -323,7 +327,7 @@ html, body{ overflow-x: hidden; }
   </section>
 
   <!-- ===== 毎月の運用手順（サマリ） ===== -->
-  <section class="guide-section"><button class="guide-toggle" id="opsToggle"><span>📅 運用手順（サマリ）</span><span class="toggle-icon" style="display:inline-block; transition:transform 0.2s;">▼</span></button><div class="guide-content" id="opsContent"><div class="guide-grid" style="padding: 16px 0;"><div class="guide-item"><h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🤖 自動で行われること（何もしなくてよい）</h4><ul style="padding-left: 0;"><li>平日の朝7時ごろ、基準価額・株価の取得、最高値比・Tier判定、ダッシュボードの更新が自動で走ります。</li><li>平均取得単価・評価額・コア／サテライトの比率は、約定履歴から自動で計算されます。</li><li>積立対象の銘柄で新しいTierに到達すると、LINEに下落アラートが届きます。毎朝の日次サマリー（最高値比・平均取得単価比）も届きます。</li></ul><h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📅 毎月の作業（3ステップ）</h4><ul style="padding-left: 0;"><li><strong>① 積立日</strong>（SBI証券の積立設定どおりに自動で約定。操作は不要です）</li><li><strong>現金積立</strong>（現金・NISA（成長））: 毎月23日に発注、約定は25日前後 → NASDAQ100 30,000円（NISA（成長））／Tracers 28,824円（NISA（成長））（月 58,824円）</li><li><strong>クレカ積立</strong>（クレジットカード）: 毎月10日に発注、約定は11日前後 → eMAXIS Slim 全世界株式（オルカン） 10,000円（NISA（つみたて））／Tracers 20,000円（NISA（成長））／NASDAQ100 20,000円（NISA（成長））（月 50,000円）<br><span style="color:var(--yellow);">▶ 2027/1/10発注分から（SBIの積立設定画面。次回発注予定日が2027/1/10）の新構成: eMAXIS Slim 全世界株式（オルカン） 30,000円（NISA（つみたて））／eMAXIS Slim 米国株式（S&P500） 10,000円（NISA（つみたて））／NASDAQ100 10,000円（NISA（成長））（月 50,000円）</span></li><li><strong>② 約定が確定したら</strong>（積立日の数日後）: SBI証券から<strong>約定履歴CSV</strong>（投資信託・米国株）をダウンロードし、<code>python scripts/update_purchases.py 投信CSV 米国株CSV</code> を実行します。取り込み予定を確認（y）→ 書き込み → コミット・プッシュまで自動です。</li><li><strong>③ 翌営業日以降</strong>: ダッシュボードの反映を確認します。見る場所は「投資意思決定サマリー」「資金投入管理状況」「長期ポートフォリオ」です。</li></ul></div><div class="guide-item"><h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🚨 下落アラートのLINE通知が来たとき</h4><ul style="padding-left: 0;"><li>通知は「気づき」です。LINEには最高値比と平均取得単価比だけが届きます。購入額や売買の指示は含みません。</li><li>買うかどうかは自分で判断します。追加買付（個別株・手動買付）に枠はなく、<strong>原資から賄います</strong>（残りは「資金投入管理状況」で確認）。</li><li>買う場合はSBI証券で<strong>手動発注</strong>します（自動発注はしません）。約定後は上の②と同じ手順でCSVを取り込みます。</li></ul><h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📊 毎月見る数字</h4><ul style="padding-left: 0;"><li><strong>投資意思決定サマリー</strong>: 全保有銘柄の最高値比・基準日比・平均取得単価比・Tierの到達状況。</li><li><strong>資金投入管理状況</strong>: 原資で積立が続けられる月数と、NISA枠（成長・つみたて）の使用率。</li><li><strong>長期ポートフォリオ</strong>: コア（オルカン・S&amp;P500系）とサテライト（それ以外）の割合。</li></ul><h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">⚠️ 注意</h4><ul style="padding-left: 0;"><li>約定履歴CSVは個人の取引明細のため、公開リポジトリに<strong>コミットしない</strong>でください。</li><li>土日は自動実行されません。反映が遅れているときは、GitHubの Actions タブで実行結果を確認します。</li></ul></div></div></div></section>
+  <section class="guide-section"><button class="guide-toggle" id="opsToggle"><span>📅 運用手順（サマリ）</span><span class="toggle-icon" style="display:inline-block; transition:transform 0.2s;">▼</span></button><div class="guide-content" id="opsContent"><div class="guide-grid" style="padding: 16px 0;"><div class="guide-item"><h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🤖 自動で行われること（何もしなくてよい）</h4><ul style="padding-left: 0;"><li>平日の朝7時ごろ、基準価額・株価の取得、最高値比・Tier判定、ダッシュボードの更新が自動で走ります。</li><li>平均取得単価・評価額・コア／サテライトの比率は、約定履歴から自動で計算されます。</li><li>積立対象の銘柄で新しいTierに到達すると、LINEに下落アラートが届きます。毎朝の日次サマリー（最高値比・平均取得単価比）も届きます。</li></ul><h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📅 毎月の作業（3ステップ）</h4><ul style="padding-left: 0;"><li><strong>① 積立日</strong>（SBI証券の積立設定どおりに自動で約定。操作は不要です）</li><li><strong>現金積立</strong>（現金・NISA（成長））: 毎月23日に発注、約定は25日前後 → NASDAQ100 30,000円（NISA（成長））／Tracers 28,824円（NISA（成長））（月 58,824円）</li><li><strong>クレカ積立</strong>（クレジットカード）: 毎月10日に発注、約定は11日前後 → eMAXIS Slim 全世界株式（オルカン） 10,000円（NISA（つみたて））／Tracers 20,000円（NISA（成長））／NASDAQ100 20,000円（NISA（成長））（月 50,000円）<br><span style="color:var(--yellow);">▶ 2027/1/10発注分から（SBIの積立設定画面。次回発注予定日が2027/1/10）の新構成: eMAXIS Slim 全世界株式（オルカン） 30,000円（NISA（つみたて））／eMAXIS Slim 米国株式（S&P500） 10,000円（NISA（つみたて））／NASDAQ100 10,000円（NISA（成長））（月 50,000円）</span></li><li><strong>② 約定が確定したら</strong>（積立日の数日後）: SBI証券から<strong>約定履歴CSV</strong>（投資信託・米国株）をダウンロードし、<code>python scripts/update_purchases.py 投信CSV 米国株CSV</code> を実行します。取り込み予定を確認（y）→ 書き込み → コミット・プッシュまで自動です。</li><li><strong>③ 翌営業日以降</strong>: ダッシュボードの反映を確認します。見る場所は「投資意思決定サマリー」「資金投入管理状況」「長期ポートフォリオ」です。</li></ul></div><div class="guide-item"><h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🚨 下落アラートのLINE通知が来たとき</h4><ul style="padding-left: 0;"><li>通知は「気づき」です。LINEには最高値比と平均取得単価比だけが届きます。購入額や売買の指示は含みません。</li><li>買うかどうかは自分で判断します。追加買付（個別株・手動買付）に枠はなく、<strong>原資から賄います</strong>（残りは「資金投入管理状況」で確認）。</li><li>買う場合はSBI証券で<strong>手動発注</strong>します（自動発注はしません）。約定後は上の②と同じ手順でCSVを取り込みます。</li></ul><h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📊 毎月見る数字</h4><ul style="padding-left: 0;"><li><strong>投資意思決定サマリー</strong>: 全保有銘柄の前日比・平均取得単価比・Tierの到達状況（最高値比は銘柄毎の詳細で確認）。</li><li><strong>資金投入管理状況</strong>: 原資で積立が続けられる月数と、NISA枠（成長・つみたて）の使用率。</li><li><strong>長期ポートフォリオ</strong>: コア（オルカン・S&amp;P500系）とサテライト（それ以外）の割合。</li></ul><h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">⚠️ 注意</h4><ul style="padding-left: 0;"><li>約定履歴CSVは個人の取引明細のため、公開リポジトリに<strong>コミットしない</strong>でください。</li><li>土日は自動実行されません。反映が遅れているときは、GitHubの Actions タブで実行結果を確認します。</li></ul></div></div></div></section>
 
   <!-- ===== 投資意思決定サマリー ===== -->
   <section class="section-panel">
@@ -333,23 +337,22 @@ html, body{ overflow-x: hidden; }
         <thead>
           <tr>
             <th>銘柄</th>
-            <th>最高値比 (下落率)</th>
-            <th>基準日比</th>
+            <th>前日比</th>
             <th>平均取得単価比</th>
             <th>Tier到達</th>
           </tr>
         </thead>
         <tbody>
-          <tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#64748b;box-shadow:0 0 6px #64748b"></span>      <span style="font-weight:600;">SBI・V・S&P500</span><span class="inactive-tag">（コア）</span>    </div>  </td>  <td data-label="最高値比 (下落率)"><span class="val-drawdown">-7.0%</span></td>  <td data-label="基準日比">+7.2%</td>  <td data-label="平均取得単価比"><span style="color:var(--green);font-weight:600;">+37.1%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
-<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#3b82f6;box-shadow:0 0 6px #3b82f6"></span>      <span style="font-weight:600;">S&P500</span><span class="inactive-tag">（コア）</span>    </div>  </td>  <td data-label="最高値比 (下落率)"><span class="val-drawdown">-7.2%</span></td>  <td data-label="基準日比">-5.6%</td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-5.4%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
-<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#10b981;box-shadow:0 0 6px #10b981"></span>      <span style="font-weight:600;">オルカン</span><span class="inactive-tag">（コア）</span>    </div>  </td>  <td data-label="最高値比 (下落率)"><span class="val-drawdown">-8.9%</span></td>  <td data-label="基準日比">-7.8%</td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-5.5%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
-<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#ec4899;box-shadow:0 0 6px #ec4899"></span>      <span style="font-weight:600;">Tracers</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="最高値比 (下落率)"><span class="val-drawdown">-12.2%</span></td>  <td data-label="基準日比">-7.3%</td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-6.8%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-hit">Tier1 到達</span></td></tr>
-<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#0ea5e9;box-shadow:0 0 6px #0ea5e9"></span>      <span style="font-weight:600;">NASDAQ100</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="最高値比 (下落率)"><span class="val-drawdown">-14.0%</span></td>  <td data-label="基準日比">-11.6%</td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-3.7%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-hit">Tier1 到達</span></td></tr>
-<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#a855f7;box-shadow:0 0 6px #a855f7"></span>      <span style="font-weight:600;">SOX半導体</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="最高値比 (下落率)"><span class="val-drawdown">-27.5%</span></td>  <td data-label="基準日比">-27.1%</td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-19.4%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-hit">Tier1 到達</span></td></tr>
-<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#f97316;box-shadow:0 0 6px #f97316"></span>      <span style="font-weight:600;">FANG+</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="最高値比 (下落率)"><span class="val-drawdown">-15.7%</span></td>  <td data-label="基準日比">-6.8%</td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-7.1%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-hit">Tier1 到達</span></td></tr>
-<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#eab308;box-shadow:0 0 6px #eab308"></span>      <span style="font-weight:600;">はじめてのNISA全世界株式</span><span class="inactive-tag">（別会計）</span>    </div>  </td>  <td data-label="最高値比 (下落率)"><span class="val-drawdown">-8.9%</span></td>  <td data-label="基準日比">-7.0%</td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-5.9%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
-<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#e11d48;box-shadow:0 0 6px #e11d48"></span>      <span style="font-weight:600;">テスラ</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="最高値比 (下落率)"><span class="val-drawdown">-5.4%</span></td>  <td data-label="基準日比">+21.6%</td>  <td data-label="平均取得単価比"><span style="color:var(--green);font-weight:600;">+21.6%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
-<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#76b900;box-shadow:0 0 6px #76b900"></span>      <span style="font-weight:600;">エヌビディア</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="最高値比 (下落率)"><span class="val-drawdown">-5.7%</span></td>  <td data-label="基準日比">-5.7%</td>  <td data-label="平均取得単価比"><span style="color:var(--green);font-weight:600;">+2.0%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
+          <tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#64748b;box-shadow:0 0 6px #64748b"></span>      <span style="font-weight:600;">SBI・V・S&P500</span><span class="inactive-tag">（コア）</span>    </div>  </td>  <td data-label="前日比"><span style="color:var(--green);font-weight:600;">+0.5%</span></td>  <td data-label="平均取得単価比"><span style="color:var(--green);font-weight:600;">+37.1%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
+<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#3b82f6;box-shadow:0 0 6px #3b82f6"></span>      <span style="font-weight:600;">S&P500</span><span class="inactive-tag">（コア）</span>    </div>  </td>  <td data-label="前日比"><span style="color:var(--green);font-weight:600;">+0.5%</span></td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-5.4%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
+<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#10b981;box-shadow:0 0 6px #10b981"></span>      <span style="font-weight:600;">オルカン</span><span class="inactive-tag">（コア）</span>    </div>  </td>  <td data-label="前日比"><span style="color:var(--red);font-weight:600;">-0.1%</span></td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-5.5%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
+<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#ec4899;box-shadow:0 0 6px #ec4899"></span>      <span style="font-weight:600;">Tracers</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="前日比"><span style="color:var(--green);font-weight:600;">+1.3%</span></td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-6.8%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-hit">Tier1 到達</span></td></tr>
+<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#0ea5e9;box-shadow:0 0 6px #0ea5e9"></span>      <span style="font-weight:600;">NASDAQ100</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="前日比"><span style="color:var(--green);font-weight:600;">+0.5%</span></td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-3.7%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-hit">Tier1 到達</span></td></tr>
+<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#a855f7;box-shadow:0 0 6px #a855f7"></span>      <span style="font-weight:600;">SOX半導体</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="前日比"><span style="color:var(--green);font-weight:600;">+1.4%</span></td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-19.4%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-hit">Tier1 到達</span></td></tr>
+<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#f97316;box-shadow:0 0 6px #f97316"></span>      <span style="font-weight:600;">FANG+</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="前日比"><span style="color:var(--green);font-weight:600;">+0.2%</span></td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-7.1%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-hit">Tier1 到達</span></td></tr>
+<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#eab308;box-shadow:0 0 6px #eab308"></span>      <span style="font-weight:600;">はじめてのNISA全世界株式</span><span class="inactive-tag">（別会計）</span>    </div>  </td>  <td data-label="前日比"><span style="color:var(--red);font-weight:600;">-0.1%</span></td>  <td data-label="平均取得単価比"><span style="color:var(--red);font-weight:600;">-5.9%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
+<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#e11d48;box-shadow:0 0 6px #e11d48"></span>      <span style="font-weight:600;">テスラ</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="前日比"><span style="color:var(--green);font-weight:600;">+11.5%</span></td>  <td data-label="平均取得単価比"><span style="color:var(--green);font-weight:600;">+21.6%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
+<tr>  <td data-label="銘柄">    <div style="display:flex;align-items:center;gap:8px;">      <span class="fund-dot" style="background-color:#76b900;box-shadow:0 0 6px #76b900"></span>      <span style="font-weight:600;">エヌビディア</span><span class="inactive-tag">（サテライト）</span>    </div>  </td>  <td data-label="前日比"><span style="color:var(--green);font-weight:600;">+31.5%</span></td>  <td data-label="平均取得単価比"><span style="color:var(--green);font-weight:600;">+2.0%</span></td>  <td data-label="Tier到達"><span class="val-tier tier-ok">未到達</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -371,6 +374,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">38,782円</div>
+      <div class="metric-sub">前日比: <span style="color:var(--green);font-weight:600;">+0.5%</span></div>
       
     </div>
     <div class="metric-item">
@@ -381,7 +385,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値比（下落率）</div>
       <div class="metric-value drawdown">-7.0%</div>
-      <div class="metric-sub">Tier1 (-11%) まであと 4.0pt</div>
+      <div class="metric-sub">次のTier1 (-11%): 37,116円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">平均取得単価</div>
@@ -389,9 +393,9 @@ html, body{ overflow-x: hidden; }
       <div class="metric-sub">比: <span style="color:var(--green);font-weight:600;">+37.1%</span></div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">36,175円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">+7.2%</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">3,786,166円</div>
+      <div class="metric-sub">全体の 72.1%</div>
     </div>
   </div>
 
@@ -414,6 +418,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">42,418円</div>
+      <div class="metric-sub">前日比: <span style="color:var(--green);font-weight:600;">+0.5%</span></div>
       
     </div>
     <div class="metric-item">
@@ -424,7 +429,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値比（下落率）</div>
       <div class="metric-value drawdown">-7.2%</div>
-      <div class="metric-sub">Tier1 (-11%) まであと 3.8pt</div>
+      <div class="metric-sub">次のTier1 (-11%): 40,697円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">平均取得単価</div>
@@ -432,9 +437,9 @@ html, body{ overflow-x: hidden; }
       <div class="metric-sub">比: <span style="color:var(--red);font-weight:600;">-5.4%</span></div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">44,920円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-5.6%</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">346,924円</div>
+      <div class="metric-sub">全体の 6.6%</div>
     </div>
   </div>
 
@@ -457,6 +462,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">35,539円</div>
+      <div class="metric-sub">前日比: <span style="color:var(--red);font-weight:600;">-0.1%</span></div>
       
     </div>
     <div class="metric-item">
@@ -467,7 +473,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値比（下落率）</div>
       <div class="metric-value drawdown">-8.9%</div>
-      <div class="metric-sub">Tier1 (-11%) まであと 2.1pt</div>
+      <div class="metric-sub">次のTier1 (-11%): 34,727円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">平均取得単価</div>
@@ -475,9 +481,9 @@ html, body{ overflow-x: hidden; }
       <div class="metric-sub">比: <span style="color:var(--red);font-weight:600;">-5.5%</span></div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">38,532円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-7.8%</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">258,742円</div>
+      <div class="metric-sub">全体の 4.9%</div>
     </div>
   </div>
 
@@ -500,6 +506,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">15,221円</div>
+      <div class="metric-sub">前日比: <span style="color:var(--green);font-weight:600;">+1.3%</span></div>
       
     </div>
     <div class="metric-item">
@@ -510,7 +517,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値比（下落率）</div>
       <div class="metric-value drawdown">-12.2%</div>
-      <div class="metric-sub">Tier2 (-20%) まであと 7.8pt</div>
+      <div class="metric-sub">次のTier2 (-20%): 13,870円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">平均取得単価</div>
@@ -518,9 +525,9 @@ html, body{ overflow-x: hidden; }
       <div class="metric-sub">比: <span style="color:var(--red);font-weight:600;">-6.8%</span></div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">16,416円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-7.3%</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">59,194円</div>
+      <div class="metric-sub">全体の 1.1%</div>
     </div>
   </div>
 
@@ -543,6 +550,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">25,370円</div>
+      <div class="metric-sub">前日比: <span style="color:var(--green);font-weight:600;">+0.5%</span></div>
       
     </div>
     <div class="metric-item">
@@ -553,7 +561,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値比（下落率）</div>
       <div class="metric-value drawdown">-14.0%</div>
-      <div class="metric-sub">Tier2 (-25%) まであと 11.0pt</div>
+      <div class="metric-sub">次のTier2 (-25%): 22,138円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">平均取得単価</div>
@@ -561,9 +569,9 @@ html, body{ overflow-x: hidden; }
       <div class="metric-sub">比: <span style="color:var(--red);font-weight:600;">-3.7%</span></div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">28,715円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-11.6%</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">125,203円</div>
+      <div class="metric-sub">全体の 2.4%</div>
     </div>
   </div>
 
@@ -586,6 +594,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">36,573円</div>
+      <div class="metric-sub">前日比: <span style="color:var(--green);font-weight:600;">+1.4%</span></div>
       
     </div>
     <div class="metric-item">
@@ -596,7 +605,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値比（下落率）</div>
       <div class="metric-value drawdown">-27.5%</div>
-      <div class="metric-sub">Tier2 (-33%) まであと 5.5pt</div>
+      <div class="metric-sub">次のTier2 (-33%): 33,781円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">平均取得単価</div>
@@ -604,9 +613,9 @@ html, body{ overflow-x: hidden; }
       <div class="metric-sub">比: <span style="color:var(--red);font-weight:600;">-19.4%</span></div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">50,162円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-27.1%</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">288,115円</div>
+      <div class="metric-sub">全体の 5.5%</div>
     </div>
   </div>
 
@@ -629,6 +638,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">87,932円</div>
+      <div class="metric-sub">前日比: <span style="color:var(--green);font-weight:600;">+0.2%</span></div>
       
     </div>
     <div class="metric-item">
@@ -639,7 +649,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値比（下落率）</div>
       <div class="metric-value drawdown">-15.7%</div>
-      <div class="metric-sub">Tier2 (-29%) まであと 13.3pt</div>
+      <div class="metric-sub">次のTier2 (-29%): 74,094円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">平均取得単価</div>
@@ -647,9 +657,9 @@ html, body{ overflow-x: hidden; }
       <div class="metric-sub">比: <span style="color:var(--red);font-weight:600;">-7.1%</span></div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">94,387円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-6.8%</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">107,268円</div>
+      <div class="metric-sub">全体の 2.0%</div>
     </div>
   </div>
 
@@ -672,6 +682,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">18,427円</div>
+      <div class="metric-sub">前日比: <span style="color:var(--red);font-weight:600;">-0.1%</span></div>
       
     </div>
     <div class="metric-item">
@@ -682,7 +693,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値比（下落率）</div>
       <div class="metric-value drawdown">-8.9%</div>
-      <div class="metric-sub">Tier1 (-11%) まであと 2.1pt</div>
+      <div class="metric-sub">次のTier1 (-11%): 18,004円</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">平均取得単価</div>
@@ -690,9 +701,9 @@ html, body{ overflow-x: hidden; }
       <div class="metric-sub">比: <span style="color:var(--red);font-weight:600;">-5.9%</span></div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">19,818円</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-7.0%</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">282,385円</div>
+      <div class="metric-sub">別会計（比率の分母に含めない）</div>
     </div>
   </div>
 
@@ -715,6 +726,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">385.46 USD</div>
+      <div class="metric-sub">前日比: <span style="color:var(--green);font-weight:600;">+11.5%</span></div>
       
     </div>
     <div class="metric-item">
@@ -725,7 +737,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値比（下落率）</div>
       <div class="metric-value drawdown">-5.4%</div>
-      <div class="metric-sub">Tier1 (-31%) まであと 25.6pt</div>
+      <div class="metric-sub">次のTier1 (-31%): 281.15 USD</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">平均取得単価</div>
@@ -733,9 +745,9 @@ html, body{ overflow-x: hidden; }
       <div class="metric-sub">比: <span style="color:var(--green);font-weight:600;">+21.6%</span></div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">317.01 USD</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">+21.6%</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">122,676円</div>
+      <div class="metric-sub">全体の 2.3%</div>
     </div>
   </div>
 
@@ -758,6 +770,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">165.05 USD</div>
+      <div class="metric-sub">前日比: <span style="color:var(--green);font-weight:600;">+31.5%</span></div>
       
     </div>
     <div class="metric-item">
@@ -768,7 +781,7 @@ html, body{ overflow-x: hidden; }
     <div class="metric-item metric-item--highlight">
       <div class="metric-label">最高値比（下落率）</div>
       <div class="metric-value drawdown">-5.7%</div>
-      <div class="metric-sub">Tier1 (-24%) まであと 18.3pt</div>
+      <div class="metric-sub">次のTier1 (-24%): 133.00 USD</div>
     </div>
     <div class="metric-item">
       <div class="metric-label">平均取得単価</div>
@@ -776,9 +789,9 @@ html, body{ overflow-x: hidden; }
       <div class="metric-sub">比: <span style="color:var(--green);font-weight:600;">+2.0%</span></div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">175.00 USD</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">-5.7%</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">157,586円</div>
+      <div class="metric-sub">全体の 3.0%</div>
     </div>
   </div>
 
@@ -828,9 +841,9 @@ html, body{ overflow-x: hidden; }
       </div>
     </div>
     <div class="market-grid">
-      <div class="market-card">  <div class="market-card__label">VIX指数（恐怖指数）</div>  <div class="market-card__value">28.80</div>  <span class="status-badge vix-caution">警戒</span>  <div class="market-card__note">市場はやや神経質になっており、値動きが大きくなりやすい状態です。</div>  <div class="market-card__date">2026-11-24 時点</div></div>
-<div class="market-card">  <div class="market-card__label">米10年国債利回り</div>  <div class="market-card__value">4.89<span class="market-card__unit">%</span></div>  <div class="market-card__direction"><span class="trend-icon">→</span> 前回比 +0.000pt</div>  <div class="market-card__note">成長株（半導体・テック株など）は金利上昇局面で下がりやすい傾向があります。</div>  <div class="market-card__date">2026-11-24 時点</div></div>
-<div class="market-card">  <div class="market-card__label">USD/JPY（ドル円）</div>  <div class="market-card__value">159.15<span class="market-card__unit">円</span></div>  <div class="market-card__direction"><span class="trend-icon">↗</span> 前回比 +0.01円</div>  <div class="market-card__note">円高が進むと、米国株の実力が変わらなくても基準価額は下がって見えます。</div>  <div class="market-card__date">2026-11-24 時点</div></div>
+      <div class="market-card">  <div class="market-card__label">VIX指数（恐怖指数）</div>  <div class="market-card__value">30.13</div>  <span class="status-badge vix-fear">恐怖</span>  <div class="market-card__note">市場全体に強い不安が広がっており、全面的な下落が起きやすい状態です。</div>  <div class="market-card__date">2026-11-24 時点</div></div>
+<div class="market-card">  <div class="market-card__label">米10年国債利回り</div>  <div class="market-card__value">4.88<span class="market-card__unit">%</span></div>  <div class="market-card__direction"><span class="trend-icon">↘</span> 前回比 -0.010pt</div>  <div class="market-card__note">成長株（半導体・テック株など）は金利上昇局面で下がりやすい傾向があります。</div>  <div class="market-card__date">2026-11-24 時点</div></div>
+<div class="market-card">  <div class="market-card__label">USD/JPY（ドル円）</div>  <div class="market-card__value">159.13<span class="market-card__unit">円</span></div>  <div class="market-card__direction"><span class="trend-icon">↘</span> 前回比 -0.02円</div>  <div class="market-card__note">円高が進むと、米国株の実力が変わらなくても基準価額は下がって見えます。</div>  <div class="market-card__date">2026-11-24 時点</div></div>
     </div>
   </section>
 
@@ -838,7 +851,7 @@ html, body{ overflow-x: hidden; }
   <section class="section-panel"><div class="section-title">資金投入管理状況</div><div class="market-grid"><div class="market-card"><div class="market-card__label">原資で積立が続けられる月数</div><div class="market-card__value">27.5<span class="market-card__unit">か月</span></div><div class="market-card__note">原資の残額 ÷ 現金積立の月額。追加買付も原資から賄うため、実際の月数は変わります。</div></div><div class="market-card"><div class="market-card__label">原資の使用率</div><div class="market-card__value">45.3<span class="market-card__unit">%</span></div><div class="sat-bar"><div class="sat-bar__fill" style="width:45.3%"></div></div><div class="market-card__note">原資から出した買付（現金積立・追加買付・個別株）の累計 ÷ 原資</div></div><div class="market-card"><div class="market-card__label">NISA 成長投資枠の使用率（2026年）</div><div class="market-card__value">73.9<span class="market-card__unit">%</span></div><div class="sat-bar"><div class="sat-bar__fill" style="width:73.9%"></div></div><div class="market-card__note">年間240万円に対する約定の累計（子供用・個別株を含む）</div></div><div class="market-card"><div class="market-card__label">NISA つみたて投資枠の使用率（2026年）</div><div class="market-card__value">15.8<span class="market-card__unit">%</span></div><div class="sat-bar"><div class="sat-bar__fill" style="width:15.8%"></div></div><div class="market-card__note">年間120万円に対する約定の累計</div></div></div><p class="market-disclaimer" style="margin-top:10px;">2026-11-24 時点（約定履歴を取り込んだときに更新されます）。金額は公開していません。</p></section>
 
   <!-- ===== 長期ポートフォリオ（最下部） ===== -->
-  <section class="section-panel"><div class="section-title">🏦 長期ポートフォリオ（保有資産の合算）</div><p class="market-disclaimer">保有している全資産（投資信託・米国株・旧つみたてNISAを含む）の評価額を合算し、コア（オルカン・S&amp;P500系）とサテライト（それ以外）の割合を表示します。参考情報であり、Tierの判定・LINE通知には使用しません。</p><div class="sat-hero"><div class="sat-hero__label">サテライト比率（コア以外の合計 ÷ 全体）</div><div class="sat-hero__row"><span class="sat-hero__value">16.4%</span><span class="status-badge pos-neutral">コア 83.6% ／ サテライト 16.4%</span></div><div class="market-card__note">860,070円 ÷ 5,251,903円（目標・上限は置かず、表示のみ）</div><div class="sat-bar"><div class="sat-bar__fill" style="width:16.4%"></div></div></div><div class="table-wrapper"><table class="summary-table"><thead><tr><th>銘柄（評価額の大きい順）</th><th>区分</th><th>評価額</th><th>全体に占める割合</th></tr></thead><tbody><tr><td data-label="銘柄"><span class="fund-dot" style="background-color:#64748b"></span> <span style="font-weight:600;">SBI・V・S&P500</span><div class="market-card__note">旧NISA 2,433,532円／カード積立 1,352,635円</div></td><td data-label="区分">コア</td><td data-label="評価額">3,786,166円</td><td data-label="全体に占める割合">72.1%<div class="sat-bar"><div class="sat-bar__fill" style="width:72.1%"></div></div></td></tr><tr><td data-label="銘柄"><span class="fund-dot" style="background-color:#3b82f6"></span> <span style="font-weight:600;">S&P500</span><div class="market-card__note"></div></td><td data-label="区分">コア</td><td data-label="評価額">346,924円</td><td data-label="全体に占める割合">6.6%<div class="sat-bar"><div class="sat-bar__fill" style="width:6.6%"></div></div></td></tr><tr><td data-label="銘柄"><span class="fund-dot" style="background-color:#a855f7"></span> <span style="font-weight:600;">SOX半導体</span><div class="market-card__note"></div></td><td data-label="区分">サテライト</td><td data-label="評価額">288,115円</td><td data-label="全体に占める割合">5.5%<div class="sat-bar"><div class="sat-bar__fill" style="width:5.5%"></div></div></td></tr><tr><td data-label="銘柄"><span class="fund-dot" style="background-color:#10b981"></span> <span style="font-weight:600;">オルカン</span><div class="market-card__note">原資買付 170,669円／カード積立 88,073円</div></td><td data-label="区分">コア</td><td data-label="評価額">258,742円</td><td data-label="全体に占める割合">4.9%<div class="sat-bar"><div class="sat-bar__fill" style="width:4.9%"></div></div></td></tr><tr><td data-label="銘柄"><span class="fund-dot" style="background-color:#76b900"></span> <span style="font-weight:600;">エヌビディア</span><div class="market-card__note"></div></td><td data-label="区分">サテライト</td><td data-label="評価額">157,601円</td><td data-label="全体に占める割合">3.0%<div class="sat-bar"><div class="sat-bar__fill" style="width:3.0%"></div></div></td></tr><tr><td data-label="銘柄"><span class="fund-dot" style="background-color:#0ea5e9"></span> <span style="font-weight:600;">NASDAQ100</span><div class="market-card__note">原資買付 19,271円／カード積立 105,932円</div></td><td data-label="区分">サテライト</td><td data-label="評価額">125,203円</td><td data-label="全体に占める割合">2.4%<div class="sat-bar"><div class="sat-bar__fill" style="width:2.4%"></div></div></td></tr><tr><td data-label="銘柄"><span class="fund-dot" style="background-color:#e11d48"></span> <span style="font-weight:600;">テスラ</span><div class="market-card__note"></div></td><td data-label="区分">サテライト</td><td data-label="評価額">122,688円</td><td data-label="全体に占める割合">2.3%<div class="sat-bar"><div class="sat-bar__fill" style="width:2.3%"></div></div></td></tr><tr><td data-label="銘柄"><span class="fund-dot" style="background-color:#f97316"></span> <span style="font-weight:600;">FANG+</span><div class="market-card__note"></div></td><td data-label="区分">サテライト</td><td data-label="評価額">107,268円</td><td data-label="全体に占める割合">2.0%<div class="sat-bar"><div class="sat-bar__fill" style="width:2.0%"></div></div></td></tr><tr><td data-label="銘柄"><span class="fund-dot" style="background-color:#ec4899"></span> <span style="font-weight:600;">Tracers</span><div class="market-card__note">原資買付 39,940円／カード積立 19,255円</div></td><td data-label="区分">サテライト</td><td data-label="評価額">59,194円</td><td data-label="全体に占める割合">1.1%<div class="sat-bar"><div class="sat-bar__fill" style="width:1.1%"></div></div></td></tr></tbody></table></div><p class="market-disclaimer" style="margin-top:10px;">別会計（比率の分母に含めません）: はじめてのNISA全世界株式 282,385円</p><p class="market-disclaimer" style="margin-top:10px;">評価額＝保有口数（株数）×現在値。保有口数は約定履歴から集計し、米国株はUSD株価×USD/JPYで円換算しています。</p></section>
+  <section class="section-panel"><div class="section-title">🏦 長期ポートフォリオ（保有資産の合算）</div><p class="market-disclaimer">保有している全資産（投資信託・米国株・旧つみたてNISAを含む）の評価額を合算し、コア（オルカン・S&amp;P500系）とサテライト（それ以外）の割合を表示します。参考情報であり、Tierの判定・LINE通知には使用しません。</p><div class="sat-hero"><div class="sat-hero__label">サテライト比率（コア以外の合計 ÷ 全体）</div><div class="sat-hero__row"><span class="sat-hero__value">16.4%</span><span class="status-badge pos-neutral">コア 83.6% ／ サテライト 16.4%</span></div><div class="market-card__note">860,044円 ÷ 5,251,876円（目標・上限は置かず、表示のみ）</div><div class="sat-bar"><div class="sat-bar__fill" style="width:16.4%"></div></div></div><div class="table-wrapper"><table class="summary-table"><thead><tr><th>銘柄（評価額の大きい順）</th><th>区分</th><th>評価額</th><th>全体に占める割合</th></tr></thead><tbody><tr><td data-label="銘柄"><div class="pf-name"><div class="pf-name__title"><span class="fund-dot" style="background-color:#64748b"></span><span style="font-weight:600;">SBI・V・S&P500</span></div><div class="market-card__note">旧NISA 2,433,532円／カード積立 1,352,635円</div></div></td><td data-label="区分">コア</td><td data-label="評価額">3,786,166円</td><td data-label="全体に占める割合"><div class="pf-share"><span>72.1%</span><div class="sat-bar"><div class="sat-bar__fill" style="width:72.1%"></div></div></div></td></tr><tr><td data-label="銘柄"><div class="pf-name"><div class="pf-name__title"><span class="fund-dot" style="background-color:#3b82f6"></span><span style="font-weight:600;">S&P500</span></div></div></td><td data-label="区分">コア</td><td data-label="評価額">346,924円</td><td data-label="全体に占める割合"><div class="pf-share"><span>6.6%</span><div class="sat-bar"><div class="sat-bar__fill" style="width:6.6%"></div></div></div></td></tr><tr><td data-label="銘柄"><div class="pf-name"><div class="pf-name__title"><span class="fund-dot" style="background-color:#a855f7"></span><span style="font-weight:600;">SOX半導体</span></div></div></td><td data-label="区分">サテライト</td><td data-label="評価額">288,115円</td><td data-label="全体に占める割合"><div class="pf-share"><span>5.5%</span><div class="sat-bar"><div class="sat-bar__fill" style="width:5.5%"></div></div></div></td></tr><tr><td data-label="銘柄"><div class="pf-name"><div class="pf-name__title"><span class="fund-dot" style="background-color:#10b981"></span><span style="font-weight:600;">オルカン</span></div><div class="market-card__note">原資買付 170,669円／カード積立 88,073円</div></div></td><td data-label="区分">コア</td><td data-label="評価額">258,742円</td><td data-label="全体に占める割合"><div class="pf-share"><span>4.9%</span><div class="sat-bar"><div class="sat-bar__fill" style="width:4.9%"></div></div></div></td></tr><tr><td data-label="銘柄"><div class="pf-name"><div class="pf-name__title"><span class="fund-dot" style="background-color:#76b900"></span><span style="font-weight:600;">エヌビディア</span></div></div></td><td data-label="区分">サテライト</td><td data-label="評価額">157,586円</td><td data-label="全体に占める割合"><div class="pf-share"><span>3.0%</span><div class="sat-bar"><div class="sat-bar__fill" style="width:3.0%"></div></div></div></td></tr><tr><td data-label="銘柄"><div class="pf-name"><div class="pf-name__title"><span class="fund-dot" style="background-color:#0ea5e9"></span><span style="font-weight:600;">NASDAQ100</span></div><div class="market-card__note">原資買付 19,271円／カード積立 105,932円</div></div></td><td data-label="区分">サテライト</td><td data-label="評価額">125,203円</td><td data-label="全体に占める割合"><div class="pf-share"><span>2.4%</span><div class="sat-bar"><div class="sat-bar__fill" style="width:2.4%"></div></div></div></td></tr><tr><td data-label="銘柄"><div class="pf-name"><div class="pf-name__title"><span class="fund-dot" style="background-color:#e11d48"></span><span style="font-weight:600;">テスラ</span></div></div></td><td data-label="区分">サテライト</td><td data-label="評価額">122,676円</td><td data-label="全体に占める割合"><div class="pf-share"><span>2.3%</span><div class="sat-bar"><div class="sat-bar__fill" style="width:2.3%"></div></div></div></td></tr><tr><td data-label="銘柄"><div class="pf-name"><div class="pf-name__title"><span class="fund-dot" style="background-color:#f97316"></span><span style="font-weight:600;">FANG+</span></div></div></td><td data-label="区分">サテライト</td><td data-label="評価額">107,268円</td><td data-label="全体に占める割合"><div class="pf-share"><span>2.0%</span><div class="sat-bar"><div class="sat-bar__fill" style="width:2.0%"></div></div></div></td></tr><tr><td data-label="銘柄"><div class="pf-name"><div class="pf-name__title"><span class="fund-dot" style="background-color:#ec4899"></span><span style="font-weight:600;">Tracers</span></div><div class="market-card__note">原資買付 39,940円／カード積立 19,255円</div></div></td><td data-label="区分">サテライト</td><td data-label="評価額">59,194円</td><td data-label="全体に占める割合"><div class="pf-share"><span>1.1%</span><div class="sat-bar"><div class="sat-bar__fill" style="width:1.1%"></div></div></div></td></tr></tbody></table></div><p class="market-disclaimer" style="margin-top:10px;">別会計（比率の分母に含めません）: はじめてのNISA全世界株式 282,385円</p><p class="market-disclaimer" style="margin-top:10px;">評価額＝保有口数（株数）×現在値。保有口数は約定履歴から集計し、米国株はUSD株価×USD/JPYで円換算しています。</p></section>
 
 </main>
 

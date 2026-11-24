@@ -38,7 +38,7 @@ def _fmt_price(value: float | None, currency: str) -> str:
 
 
 def _role_tag(role: str) -> str:
-    return f'<span class="inactive-tag">（{ROLE_LABELS.get(role, role)}）</span>'
+    return f'<span class="inactive-tag role-tag">（{ROLE_LABELS.get(role, role)}）</span>'
 
 
 def _current_prices(results: list[dict], history: list[dict]) -> dict:
@@ -83,9 +83,11 @@ def generate(
     integrated_html = _build_integrated_section(view, groups)
     funding_html = _build_funding_section(load_status())
     ops_html = _build_monthly_ops_section(settings, today_str)
+    banner_html = _build_alert_banner(results)
 
     html = _render_html(
         today_str=today_str,
+        banner_html=banner_html,
         summary_html=summary_html,
         cards_html=cards_html,
         market_html=market_html,
@@ -241,8 +243,16 @@ def _group_header_row(group: dict, colspan: int, extra: str = "") -> str:
     return f'<tr class="group-row"><td colspan="{colspan}">{group["label"]}{monthly}{note}{extra}</td></tr>'
 
 
+def _tier_short(text: str) -> str:
+    """スマホ用に短くしたTier表示（「Tier1 到達」→「Tier1」、「Tier未設定」→「未設定」）。"""
+    return text.replace(" 到達", "").replace("Tier未設定", "未設定")
+
+
 def _build_summary_table(groups: list[dict]) -> str:
-    """投資意思決定サマリー。5つの枠ごとに見出しをつけ、銘柄ごとの前日比・平均取得単価比・Tier到達を表示する。"""
+    """
+    投資意思決定サマリー。5つの枠ごとに見出しをつけ、銘柄ごとの前日比・平均取得単価比・Tier到達を1銘柄1行で表示する。
+    銘柄名の下に小さく補足（区分・補足タグ・月額・前回値）を出す。スマホではTierを短い表示（t-short）にする。
+    """
     rows = []
     for g in groups:
         if not g["lines"]:
@@ -253,20 +263,40 @@ def _build_summary_table(groups: list[dict]) -> str:
             stale = '<span class="inactive-tag">（前回値）</span>' if r.get("stale") else ""
             tag = f'<span class="inactive-tag">（{r["tag"]}）</span>' if r.get("tag") else ""
             monthly = f'<span class="group-sub">月{r["monthly"]:,}円</span>' if r.get("monthly") else ""
+            sub = f'{_role_tag(r["role"])}{tag}{monthly}{stale}'
             rows.append(
                 f'<tr>'
-                f'  <td data-label="銘柄">'
-                f'    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-                f'      <span class="fund-dot" style="background-color:{r["color"]};box-shadow:0 0 6px {r["color"]}"></span>'
-                f'      <span style="font-weight:600;">{r["short_name"]}</span>{tag}{_role_tag(r["role"])}{monthly}{stale}'
-                f'    </div>'
-                f'  </td>'
-                f'  <td data-label="前日比">{_gain_html(r.get("day_change"))}</td>'
-                f'  <td data-label="平均取得単価比">{_gain_html(r.get("avg_cost_ratio"))}</td>'
-                f'  <td data-label="Tier到達"><span class="val-tier {tier_css}">{tier_text}</span></td>'
+                f'<td data-label="銘柄"><div class="nm">'
+                f'<div class="nm-main"><span class="fund-dot" style="background-color:{r["color"]};box-shadow:0 0 6px {r["color"]}"></span>'
+                f'<span class="nm-name">{r["short_name"]}</span></div>'
+                f'<div class="nm-sub">{sub}</div></div></td>'
+                f'<td class="num" data-label="前日比">{_gain_html(r.get("day_change"))}</td>'
+                f'<td class="num" data-label="平均取得単価比">{_gain_html(r.get("avg_cost_ratio"))}</td>'
+                f'<td class="num" data-label="Tier到達"><span class="val-tier {tier_css}">'
+                f'<span class="t-full">{tier_text}</span><span class="t-short">{_tier_short(tier_text)}</span></span></td>'
                 f'</tr>'
             )
     return "\n".join(rows)
+
+
+def _build_alert_banner(results: list[dict]) -> str:
+    """
+    ページ最上部の注意バナー。Tierに到達している銘柄（クリックで該当の詳細が開く）と、取得失敗・前回値の資産を1〜2行で示す。
+    """
+    hit = [r for r in results if r.get("drawdown") is not None and r.get("tier", 0) > 0]
+    bad = [r for r in results if r.get("price") is None or r.get("stale")]
+    lines = []
+    if hit:
+        chips = "・".join(
+            f'<a class="bn-link" href="#asset-{r["asset_id"]}">{r["short_name"]}（Tier{r["tier"]}）</a>' for r in hit
+        )
+        lines.append(f'<div class="bn-line bn-hit">⚠ Tier到達中: {chips}</div>')
+    else:
+        lines.append('<div class="bn-line bn-ok">✅ Tier到達なし</div>')
+    if bad:
+        names = "・".join(r["short_name"] for r in bad)
+        lines.append(f'<div class="bn-line bn-warn">⚠ 取得失敗・前回値: {names}</div>')
+    return f'<section class="alert-banner" id="alertBanner">{"".join(lines)}</section>'
 
 
 # ------------------------------------------------------------------
@@ -314,7 +344,16 @@ def _build_asset_cards(results: list[dict], settings: dict, purchase_history: di
             next_text = "Tier未設定"
             tier_section = '<div class="market-card__note">Tierのしきい値が未設定のため、到達状況は表示しません（config/settings.json の tiers で設定します）。</div>'
 
+        dd_text = format_drawdown(drawdown) if drawdown is not None else "-"
         html_parts.append(f"""
+<details class="asset-acc" id="asset-{aid}" style="--fund-color: {color}">
+  <summary class="asset-sum">
+    <span class="fund-dot" style="background-color:{color};box-shadow:0 0 6px {color}"></span>
+    <span class="as-name-block"><span class="as-name">{r['short_name']}</span><span class="as-price">{price_str}</span></span>
+    <span class="as-dd">{dd_text}</span>
+    <span class="as-tier val-tier {tier_css}"><span class="t-full">{tier_text}</span><span class="t-short">{_tier_short(tier_text)}</span></span>
+    <span class="as-chev">▾</span>
+  </summary>
 <div class="fund-card" style="--fund-color: {color}">
   <div class="fund-card__header">
     <div class="fund-card__name-block">
@@ -322,7 +361,6 @@ def _build_asset_cards(results: list[dict], settings: dict, purchase_history: di
       <div class="fund-card__name">{r['name']}</div>
       <div class="metric-sub" style="margin-top:4px;">枠: {"・".join(member_of.get(aid, [])) or "-"}</div>
     </div>
-    <div class="status-badge {tier_css}">{tier_text}</div>
   </div>
 
   <div class="fund-card__metrics">
@@ -356,6 +394,7 @@ def _build_asset_cards(results: list[dict], settings: dict, purchase_history: di
 
   {tier_section}
 </div>
+</details>
 """)
     return "\n".join(html_parts)
 
@@ -449,13 +488,12 @@ def _build_market_sentiment(market_display: dict) -> str:
 # 資金投入管理状況 HTML（月数・使用率だけ。金額は公開しない）
 # ------------------------------------------------------------------
 
-def _usage_card(label: str, percent: float, note: str) -> str:
+def _usage_card(label: str, percent: float) -> str:
     return (
         '<div class="market-card">'
         f'<div class="market-card__label">{label}</div>'
         f'<div class="market-card__value">{percent:.1f}<span class="market-card__unit">%</span></div>'
         f'{_bar(percent)}'
-        f'<div class="market-card__note">{note}</div>'
         '</div>'
     )
 
@@ -477,21 +515,24 @@ def _build_funding_section(status: dict | None) -> str:
                 '<div class="market-card">'
                 '<div class="market-card__label">原資で積立が続けられる月数</div>'
                 f'{months_html}'
-                '<div class="market-card__note">原資の残額 ÷ 現金積立の月額。追加買付も原資から賄うため、実際の月数は変わります。</div>'
                 '</div>'
             )
-            cards.append(_usage_card("原資の使用率", capital["used_percent"], "原資から出した買付（現金積立・追加買付・個別株）の累計 ÷ 原資"))
+            cards.append(_usage_card("原資の使用率", capital["used_percent"]))
         nisa = status.get("nisa", {})
         year = nisa.get("year", "")
-        cards.append(_usage_card(f"NISA 成長投資枠の使用率（{year}年）", nisa.get("growth_percent", 0.0), "年間240万円に対する約定の累計（子供用・個別株を含む）"))
-        cards.append(_usage_card(f"NISA つみたて投資枠の使用率（{year}年）", nisa.get("tsumitate_percent", 0.0), "年間120万円に対する約定の累計"))
+        cards.append(_usage_card(f"成長投資枠の使用率（{year}年）", nisa.get("growth_percent", 0.0)))
+        cards.append(_usage_card(f"つみたて投資枠の使用率（{year}年）", nisa.get("tsumitate_percent", 0.0)))
         body = (
-            f'<div class="market-grid">{"".join(cards)}</div>'
-            f'<p class="market-disclaimer" style="margin-top:10px;">{status.get("as_of", "-")} 時点（約定履歴を取り込んだときに更新されます）。金額は公開していません。</p>'
+            f'<div class="market-grid two">{"".join(cards)}</div>'
+            '<p class="market-disclaimer" style="margin-top:10px;">'
+            '月数＝原資の残額 ÷ 現金積立の月額（追加買付も原資から賄うため、実際の月数は変わります）。'
+            '原資の使用率＝原資から出した買付（現金積立・追加買付・個別株）の累計 ÷ 原資。'
+            'NISA枠の使用率＝年間枠（成長240万円・つみたて120万円）に対する約定の累計（子供用・個別株を含む）。'
+            f'{status.get("as_of", "-")} 時点（約定履歴を取り込んだときに更新）。金額は公開していません。</p>'
         )
 
     return (
-        '<section class="section-panel">'
+        '<section class="section-panel" id="sec-funding">'
         '<div class="section-title">資金投入管理状況</div>'
         f'{body}'
         '</section>'
@@ -548,26 +589,28 @@ def _build_integrated_section(view: dict | None, groups: list[dict] | None = Non
         for ln in sorted(g["lines"], key=lambda x: -(x["value"] or 0)):
             share = (ln["value"] / total * 100) if (total and ln["value"] is not None and g["key"] != "child") else None
             share_cell = f'<div class="pf-share"><span>{share:.1f}%</span>{_bar(share)}</div>' if share is not None else "-"
-            tag = f'<div class="market-card__note">{ln["tag"]}</div>' if ln.get("tag") else ""
+            role_label = ROLE_LABELS.get(ln["role"], ln["role"])
+            tag = f'<span class="inactive-tag">（{ln["tag"]}）</span>' if ln.get("tag") else ""
             rows.append(
                 '<tr>'
-                f'<td data-label="銘柄"><div class="pf-name"><div class="pf-name__title">'
+                f'<td data-label="銘柄"><div class="nm"><div class="nm-main">'
                 f'<span class="fund-dot" style="background-color:{ln["color"]}"></span>'
-                f'<span style="font-weight:600;">{ln["short_name"]}</span></div>'
-                f'{tag}</div></td>'
-                f'<td data-label="区分">{ROLE_LABELS.get(ln["role"], ln["role"])}</td>'
-                f'<td data-label="評価額">{_yen(ln["value"])}</td>'
-                f'<td data-label="全体に占める割合">{share_cell}</td>'
+                f'<span class="nm-name">{ln["short_name"]}</span></div>'
+                f'<div class="nm-sub"><span class="show-sm inactive-tag">（{role_label}）</span>{tag}</div></div></td>'
+                f'<td class="hide-sm" data-label="区分">{role_label}</td>'
+                f'<td class="num" data-label="評価額">{_yen(ln["value"])}</td>'
+                f'<td class="num" data-label="全体に占める割合">{share_cell}</td>'
                 '</tr>'
             )
     table = (
         '<div class="table-wrapper"><table class="summary-table">'
-        '<thead><tr><th>銘柄（枠ごと・評価額の大きい順）</th><th>区分</th><th>評価額</th><th>全体に占める割合</th></tr></thead>'
+        '<thead><tr><th>銘柄（枠ごと・評価額の大きい順）</th><th class="hide-sm">区分</th><th class="num">評価額</th>'
+        '<th class="num"><span class="th-full">全体に占める割合</span><span class="th-short">割合</span></th></tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table></div>'
     )
 
     return (
-        '<section class="section-panel">'
+        '<section class="section-panel" id="sec-portfolio">'
         '<div class="section-title">🏦 長期ポートフォリオ（保有資産の合算）</div>'
         '<p class="market-disclaimer">保有している全資産（投資信託・米国株・旧つみたてNISAを含む）の評価額を合算し、コア（オルカン・S&amp;P500系）とサテライト（それ以外）の割合を表示します。'
         '参考情報であり、Tierの判定・LINE通知には使用しません。</p>'
@@ -683,6 +726,7 @@ def _build_monthly_ops_section(settings: dict, today_str: str = "") -> str:
 
 def _render_html(
     today_str: str,
+    banner_html: str,
     summary_html: str,
     cards_html: str,
     market_html: str,
@@ -743,7 +787,7 @@ body{{
 /* ===== Header ===== */
 .header{{
   background: rgba(11, 13, 19, 0.85); backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03); padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03); padding: 10px 20px 12px;
   position: sticky; top: 0; z-index: 100;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }}
@@ -938,6 +982,46 @@ body{{
 .footer{{ text-align: center; padding: 30px; font-size: 11px; color: var(--text-mute); border-top: 1px solid rgba(255, 255, 255, 0.02); margin-top: 40px; }}
 
 html, body{{ overflow-x: hidden; }}
+.num{{ text-align: right; font-variant-numeric: tabular-nums; }}
+.val-tier{{ white-space: nowrap; }}
+.th-short, .t-short, .show-sm{{ display: none; }}
+.nm{{ display: flex; flex-direction: column; gap: 2px; }}
+.nm-main{{ display: flex; align-items: center; gap: 8px; }}
+.nm-name{{ font-weight: 600; }}
+.nm-sub{{ display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; padding-left: 16px; }}
+.nm-sub .group-sub{{ font-size: 10px; }}
+.nm-sub .inactive-tag, .nm-sub .group-sub{{ margin-left: 0; }}
+.summary-table th.num{{ text-align: right; }}
+/* 注意バナー */
+.alert-banner{{ background: var(--panel-bg); border: 1px solid rgba(255,255,255,0.04); border-radius: 14px; padding: 12px 16px; font-size: 13px; line-height: 1.7; box-shadow: var(--shadow-out); }}
+.bn-hit{{ color: #fb923c; font-weight: 700; }}
+.bn-ok{{ color: #4ade80; font-weight: 700; }}
+.bn-warn{{ color: #f87171; font-weight: 700; }}
+.bn-link{{ color: inherit; text-decoration: underline; text-underline-offset: 3px; }}
+/* 固定ナビ */
+.sec-nav{{ display: flex; gap: 6px; overflow-x: auto; max-width: 900px; margin: 10px auto 0; scrollbar-width: none; }}
+.sec-nav::-webkit-scrollbar{{ display: none; }}
+.sec-nav a{{ flex: none; padding: 5px 12px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--text-mute); background: rgba(255,255,255,0.04); text-decoration: none; }}
+.sec-nav a.active{{ color: #60a5fa; background: rgba(59,130,246,0.15); }}
+.main > section, .main > div{{ scroll-margin-top: 110px; }}
+.asset-acc{{ scroll-margin-top: 110px; }}
+/* 銘柄毎の詳細（折りたたみ） */
+.acc-head{{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }}
+.acc-head .section-title{{ margin-bottom: 0; }}
+.acc-list{{ display: flex; flex-direction: column; gap: 10px; }}
+.asset-acc{{ background: var(--panel-bg); box-shadow: var(--shadow-out); border-radius: 14px; border: 1px solid rgba(255,255,255,0.02); border-left: 5px solid var(--fund-color, #3b82f6); overflow: hidden; }}
+.asset-sum{{ list-style: none; display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; }}
+.asset-sum::-webkit-details-marker{{ display: none; }}
+.as-name-block{{ display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }}
+.as-name{{ font-size: 14px; font-weight: 700; }}
+.as-price{{ font-size: 11px; color: var(--text-mute); font-variant-numeric: tabular-nums; }}
+.as-dd{{ color: var(--red); font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; flex: none; }}
+.as-tier{{ font-size: 12px; flex: none; min-width: 64px; text-align: right; }}
+.as-chev{{ color: var(--text-mute); font-size: 12px; transition: transform 0.2s; flex: none; }}
+.asset-acc[open] .as-chev{{ transform: rotate(180deg); }}
+.asset-acc[open] > .asset-sum{{ border-bottom: 1px solid rgba(255,255,255,0.05); }}
+.asset-acc .fund-card{{ box-shadow: none; border: none; border-radius: 0; background: transparent; padding: 16px; }}
+.asset-acc .fund-card:hover{{ transform: none; box-shadow: none; }}
 .pf-line{{ display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12px; padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.04); }}
 .pf-line span:first-child{{ color: var(--text-mute); white-space: nowrap; }}
 .pf-line span:last-child{{ text-align: right; font-family: 'Inter', monospace; }}
@@ -950,33 +1034,64 @@ html, body{{ overflow-x: hidden; }}
   .trend-grid{{ grid-template-columns: 1fr 1fr; }}
   .guide-grid{{ grid-template-columns: 1fr; }}
   .market-grid{{ grid-template-columns: 1fr; }}
+  .market-grid.two{{ grid-template-columns: 1fr 1fr; }}
 }}
 @media(max-width: 600px){{
-  /* 投資意思決定サマリー: 横スクロールを避けるため、1銘柄1カードの縦積みにする */
-  .table-wrapper{{ padding: 4px; overflow-x: visible; }}
-  .summary-table{{ min-width: 0; }}
-  .summary-table thead{{ display: none; }}
-  .summary-table, .summary-table tbody, .summary-table tr, .summary-table td{{ display: block; width: 100%; }}
-  .summary-table tr{{ padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.05); }}
-  .summary-table tr:last-child{{ border-bottom: none; }}
-  .summary-table td{{ display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 6px; border: none; font-size: 13px; }}
-  .summary-table td::before{{ content: attr(data-label); color: var(--text-mute); font-size: 11px; white-space: nowrap; }}
-  .summary-table td:first-child{{ font-size: 14px; padding-bottom: 6px; justify-content: flex-start; text-align: left; }}
-  .summary-table tr.group-row{{ padding: 0; margin-top: 8px; border-bottom: none; }}
-  .summary-table tr.group-row td{{ display: block; border-radius: 8px; font-size: 12px; }}
-  .summary-table td:first-child::before{{ content: none; }}
-  .funds-table th, .funds-table td{{ padding: 10px 4px; font-size: 12px; }}
+  /* 投資意思決定サマリー・長期ポートフォリオ: スマホでも1銘柄1行のコンパクトな表にする */
+  .table-wrapper{{ padding: 4px 2px; overflow-x: visible; }}
+  .summary-table{{ min-width: 0; font-size: 12px; }}
+  .summary-table th{{ padding: 6px 4px; font-size: 10px; letter-spacing: 0; }}
+  .summary-table td{{ padding: 8px 4px; font-size: 12px; }}
+  .summary-table td:first-child{{ width: 40%; }}
+  .th-full, .t-full{{ display: none; }}
+  .th-short, .t-short{{ display: inline; }}
+  .hide-sm{{ display: none; }}
+  .show-sm{{ display: inline; }}
+  .summary-table tr.group-row td{{ padding: 8px 8px; font-size: 12px; }}
+  .nm-sub{{ padding-left: 14px; flex-wrap: nowrap; white-space: nowrap; }}
+  .nm-sub .inactive-tag, .nm-sub .group-sub{{ font-size: 9px; }}
+  .nm-sub .role-tag{{ display: none; }}
+  .pf-share{{ flex-direction: column; align-items: flex-end; gap: 3px; }}
+  .pf-share .sat-bar{{ width: 56px; }}
+  .chart-tabs{{ flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }}
+  .chart-tab{{ flex: none; }}
+  .as-tier{{ min-width: 48px; }}
+}}
+@media(max-width: 360px){{
+  .main{{ padding: 12px 8px; }}
+  .section-panel{{ padding: 14px 10px; }}
+  .table-wrapper{{ padding: 2px 0; }}
+  .summary-table th, .summary-table td{{ padding-left: 2px; padding-right: 2px; }}
+  .summary-table td{{ font-size: 11px; }}
+  .summary-table td:first-child{{ width: 34%; }}
+  .summary-table th{{ font-size: 9px; }}
+  .group-row td{{ padding: 8px 6px; }}
+  .nm-main{{ gap: 5px; }}
+  .nm-sub{{ padding-left: 11px; }}
+  .pf-share .sat-bar{{ width: 44px; }}
 }}
 @media(max-width: 480px){{
-  .header-inner{{ flex-direction: column; gap: 8px; text-align: center; }}
-  .header-sub{{ text-align: center; }}
-  .header{{ padding: 12px 14px; }}
+  .header{{ padding: 8px 12px; }}
+  .header-inner{{ gap: 8px; }}
+  .header-title{{ font-size: 16px; }}
+  .header-title span{{ display: none; }}
+  .header-sub{{ font-size: 10px; line-height: 1.3; }}
+  .hs-tag{{ display: none; }}
+  .sec-nav{{ margin-top: 6px; }}
+  .sec-nav a{{ padding: 4px 10px; }}
+  .main > section, .main > div, .asset-acc{{ scroll-margin-top: 92px; }}
+  .asset-sum{{ padding: 9px 12px; }}
+  .sat-hero{{ padding: 12px 14px; }}
+  .sat-hero__label{{ margin-bottom: 2px; }}
   .sat-hero__value{{ font-size: 28px; }}
+  .sat-bar{{ margin: 12px 0 10px; }}
+  .market-card{{ padding: 12px; }}
   .market-card__value{{ font-size: 20px; }}
+  .market-card__note{{ font-size: 10px; }}
   .chart-wrapper{{ height: 240px; padding: 8px; }}
-  .summary-table th, .summary-table td{{ padding: 10px 6px; font-size: 11px; }}
   .tier-progress{{ flex-direction: column; gap: 6px; }}
   .metric-value{{ font-size: 14px; }}
+  .alert-banner{{ padding: 10px 12px; font-size: 12px; }}
 }}
 .val-tier.tier-hit, .status-badge.tier-hit {{ color: #fb923c; font-weight: 700; }}
 .val-tier.tier-ok, .status-badge.tier-ok {{ color: #94a3b8; }}
@@ -989,13 +1104,19 @@ html, body{{ overflow-x: hidden; }}
   <div class="header-inner">
     <div class="header-title">🛡️ VALOR SHIELD <span style="font-weight:400; font-size:14px; color:var(--text-mute); margin-left:4px;">暴落監視</span></div>
     <div class="header-sub">
-      更新: {today_str} JST<br>
-      <span style="color:var(--blue); font-weight:600;">全保有銘柄の下落監視</span>
+      <span>更新: {today_str} JST</span><br>
+      <span class="hs-tag" style="color:var(--blue); font-weight:600;">全保有銘柄の下落監視</span>
     </div>
   </div>
+  <nav class="sec-nav" id="secNav">
+    <a href="#sec-summary">サマリー</a><a href="#sec-detail">詳細</a><a href="#sec-chart">推移</a><a href="#sec-market">市場</a><a href="#sec-funding">資金</a><a href="#sec-portfolio">保有</a>
+  </nav>
 </header>
 
 <main class="main">
+
+  <!-- ===== 注意バナー ===== -->
+  {banner_html}
 
   <!-- ===== ルールと見方 (アコーディオン) ===== -->
   <section class="guide-section">
@@ -1037,16 +1158,16 @@ html, body{{ overflow-x: hidden; }}
   {ops_html}
 
   <!-- ===== 投資意思決定サマリー ===== -->
-  <section class="section-panel">
+  <section class="section-panel" id="sec-summary">
     <div class="section-title">投資意思決定サマリー</div>
     <div class="table-wrapper">
       <table class="summary-table">
         <thead>
           <tr>
             <th>銘柄</th>
-            <th>前日比</th>
-            <th>平均取得単価比</th>
-            <th>Tier到達</th>
+            <th class="num">前日比</th>
+            <th class="num"><span class="th-full">平均取得単価比</span><span class="th-short">平均比</span></th>
+            <th class="num"><span class="th-full">Tier到達</span><span class="th-short">Tier</span></th>
           </tr>
         </thead>
         <tbody>
@@ -1057,11 +1178,18 @@ html, body{{ overflow-x: hidden; }}
   </section>
 
   <!-- ===== 銘柄毎の詳細（全保有銘柄） ===== -->
-  <div class="section-title" style="margin-bottom:-8px;">銘柄毎の詳細</div>
-  {cards_html}
+  <section id="sec-detail">
+    <div class="acc-head">
+      <div class="section-title">銘柄毎の詳細</div>
+      <button class="chart-tab" id="accToggleAll" type="button">すべて開く</button>
+    </div>
+    <div class="acc-list">
+      {cards_html}
+    </div>
+  </section>
 
   <!-- ===== 推移チャート ===== -->
-  <section class="section-panel">
+  <section class="section-panel" id="sec-chart">
     <div class="section-title">基準価額の推移とTier閾値</div>
     <div class="chart-tabs" id="chartTabs">
       <button class="chart-tab active" data-fund="all" data-currency="JPY">全銘柄</button>
@@ -1076,7 +1204,7 @@ html, body{{ overflow-x: hidden; }}
   </section>
 
   <!-- ===== 市場心理（参考情報） ===== -->
-  <section class="section-panel">
+  <section class="section-panel" id="sec-market">
     <div class="section-title">🌡️ 市場心理（参考情報）</div>
     <p class="market-disclaimer">これらは売買の判断基準ではありません。Tierの到達は価格（最高値比）だけで判定されます。迷ったときの参考としてご覧ください。</p>
     <button class="guide-toggle" id="marketGuideToggle">
@@ -1099,7 +1227,7 @@ html, body{{ overflow-x: hidden; }}
         </div>
       </div>
     </div>
-    <div class="market-grid">
+    <div class="market-grid two">
       {market_html}
     </div>
   </section>
@@ -1366,4 +1494,46 @@ document.getElementById('currencyToggle').addEventListener('click', () => {
 });
 
 renderChart('all');
+
+// ===== 銘柄毎の詳細（折りたたみ）=====
+const accToggleAll = document.getElementById('accToggleAll');
+if (accToggleAll) {
+  accToggleAll.addEventListener('click', () => {
+    const items = [...document.querySelectorAll('.asset-acc')];
+    const open = items.some(d => !d.open);
+    items.forEach(d => { d.open = open; });
+    accToggleAll.textContent = open ? 'すべて閉じる' : 'すべて開く';
+  });
+}
+// 注意バナーの銘柄名から、該当の詳細を開いて移動する
+function openAssetFromHash() {
+  const id = decodeURIComponent(location.hash || '').replace('#', '');
+  const el = id ? document.getElementById(id) : null;
+  if (el && el.tagName === 'DETAILS') el.open = true;
+}
+document.querySelectorAll('.bn-link').forEach(a => {
+  a.addEventListener('click', () => {
+    const el = document.querySelector(a.getAttribute('href'));
+    if (el) el.open = true;
+  });
+});
+window.addEventListener('hashchange', openAssetFromHash);
+openAssetFromHash();
+
+// ===== 固定ナビ: 表示中のセクションを強調 =====
+const navLinks = [...document.querySelectorAll('#secNav a')];
+if (navLinks.length && 'IntersectionObserver' in window) {
+  const byId = new Map(navLinks.map(a => [a.getAttribute('href').slice(1), a]));
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (en.isIntersecting) {
+        navLinks.forEach(l => l.classList.remove('active'));
+        const link = byId.get(en.target.id);
+        if (link) link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-110px 0px -65% 0px' });
+  byId.forEach((link, id) => { const el = document.getElementById(id); if (el) io.observe(el); });
+}
+
 """

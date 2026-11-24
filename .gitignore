@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 .claude/settings.local.json
+
+# Personal planning knowledge (not tracked, migrated 2026-11-24)
+Personal/
+約定履歴/
+要件定義履歴/

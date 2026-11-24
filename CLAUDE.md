@@ -9,6 +9,7 @@
 - **背景・目的**: 従来は人手で毎日基準価額を確認し下落率を計算していたが、見逃しリスクと運用負荷をゼロにするため自動化した。詳細な要件は [暴落監視ダッシュボード_要件定義書.md](暴落監視ダッシュボード_要件定義書.md) を参照。
 - **開発の経緯**: 元々 Google AntiGravity で構築されたプロジェクトを、本セッションから Claude Code に開発移管した。
 - **投資判断の自動化は行わない**。買付注文は常にSBI証券での手動操作。本ツールは「気づき」を与えるだけ。
+- 計画策定・資産配分・NISA積立の相談では、最初に `Personal/README.md`（Git管理外）を読み、正本の場所に従う。
 
 ## 対象銘柄とTier閾値（設定来高値比の下落率）
 
@@ -16,7 +17,7 @@
 |---|---|---|---|---|
 | `tracers` | Tracers S&P500トップ10インデックス（米国株式） | -12% | -20% | -28% |
 | `fang` | iFreeNEXT FANG+インデックス（**2026-09以降 新規購入停止**。`active:false`でTier通知・LINE日次サマリー対象外、表示のみ継続） | -15% | -25% | -35% |
-| `nasdaq100` | ニッセイNASDAQ100インデックスファンド（**積立停止中**。`active:false`・`tiers`なし。表示のみ） | - | - | - |
+| `nasdaq100` | ニッセイNASDAQ100インデックスファンド（**別枠積立の銘柄**。`active:false`・`tiers`なし・`inactive_label`・`cost_accounts:["side"]`。表示のみ） | - | - | - |
 | `sox` | ニッセイSOX指数インデックスファンド | -10% | -18% | -28% |
 | `sp500` | eMAXIS Slim米国株式（S&P500） | -7% | -12% | -18% |
 | `orkan` | eMAXIS Slim全世界株式（オール・カントリー） | -6% | -10% | -15% |
@@ -95,9 +96,9 @@ GitHub Actions 上では `workflow_dispatch` から `dry_run: true` で手動テ
 - **cronの自動同期**: `monitor.yml` の cron 式を直接編集しても、次回 `monitor.py` 実行時に `settings.json` の `schedule` の値で上書きされる。スケジュール変更は `settings.json` 側で行うこと。
 - **triggered.json は重複通知防止のための唯一のstate**。誤って削除するとTier到達通知が再送されるため、消す場合は影響を理解した上で行う。
 - **public/index.html は生成物**。手動編集しても次回実行で上書きされる。テンプレート変更は `generate_dashboard.py` を編集する。
-- **銘柄の追加・停止は設定のみで行う**: `settings.json`の`funds`に追加、新規購入停止は`"active": false`（`tiers`は省略可。Tier判定・Tier表示・Tier閾値線は出ない）。表示順（ダッシュボードの表・カード・タブ・LINE）は`funds`の並び順。FANG+・NASDAQ100がこれに当たる（NASDAQ100は積立設定が見当たらず最後の約定が2026-09-10のため停止扱い）。`history.csv`は列が自動で増える。銘柄IDをコードに固定しない（`.get(fund_id, [])`で未登録を空扱いする）。
+- **銘柄の追加・停止は設定のみで行う**: `settings.json`の`funds`に追加、新規購入停止は`"active": false`（`tiers`は省略可。Tier判定・Tier表示・Tier閾値線は出ない）。表示順（ダッシュボードの表・カード・タブ・LINE）は`funds`の並び順。FANG+・NASDAQ100がこれに当たる（NASDAQ100は2026-11-10約定分から別枠積立で再開する銘柄。見出し・判定欄の文言は`funds[].inactive_label`、平均取得単価・含み損益・グラフマーカーに使う口座は`funds[].cost_accounts`＝省略時attack、NASDAQ100はside）。`history.csv`は列が自動で増える。銘柄IDをコードに固定しない（`.get(fund_id, [])`で未登録を空扱いする）。
 - **`--dry-run`は通知送信コードパスを通らない**（8/10-11の本番クラッシュの教訓、要件定義書 残課題No.7）。通知関連の変更は`_send_line_message`をモックして`notify_*`を実際に呼んで確認すること。また`--dry-run`もデータファイル（`data/*`）を書き換えるため、テスト後は`git checkout`で戻す（本番の記録はGitHub Actionsに一本化）。
-- **別枠積立（クレジットカード払いの毎月積立。オルカン30,000円=つみたて投資枠、Tracers20,000円=成長投資枠）は別会計**: 預り区分だけでは判別できないため取り込みは`sbi_import.side_fixed_amounts`（固定金額）で判定する。`purchase_history.json`の`account:"side"`で記録し、平均取得単価カード・チャートマーカー（攻撃フェーズ=`attack`、省略時）には含めない。合算は`portfolio.py`（統合ビュー）だけが行う。口座区分は`attack`（攻撃フェーズ）/`side`（別枠積立）/`legacy`（旧つみたてNISA。保持方針）。統合ビューは保有全ファンドの評価額合計を「全体」とし、グループ`role`（`core`/`satellite`）のサテライト比率と、`share_review`（S&P500比率の維持判断ルール。基準は未設定=null）を表示する。SBI・Vの基準価額は`positions.items`の`hidden:true`で取得（NASDAQ100は`funds`の停止銘柄として取得）。はじめてのNISAは子供用の別枠のため統合ビューに含めない。`positions.items`の`hidden:true`は「基準価額の取得・保存のみ行い、カード/チャートタブ/LINEには出さない」（SBI・V・S&P500）。
+- **別枠積立（クレジットカード払いの毎月積立。オルカン30,000円=つみたて投資枠、Tracers20,000円=成長投資枠）は別会計**: 預り区分だけでは判別できないため取り込みは`sbi_import.side_fixed_amounts`（固定金額）と`sbi_import.side_funds`（別枠でしか持たない銘柄＝NASDAQ100）で判定する。積立設定は`monthly_schedule.side.phases`（`from`=発注日つきの期間別構成。ダッシュボードが当日に有効な構成と予告を自動表示）。`purchase_history.json`の`account:"side"`で記録し、平均取得単価カード・チャートマーカー（攻撃フェーズ=`attack`、省略時）には含めない。合算は`portfolio.py`（統合ビュー）だけが行う。口座区分は`attack`（攻撃フェーズ）/`side`（別枠積立）/`legacy`（旧つみたてNISA。保持方針）。統合ビューは保有全ファンドの評価額合計を「全体」とし、グループ`role`（`core`/`satellite`）のサテライト比率（目標`satellite_target_percent`・上限`satellite_limit_percent`の2本線）と、`share_review`（S&P500比率の維持判断ルール。基準は未設定=null）を表示する。SBI・Vの基準価額は`positions.items`の`hidden:true`で取得（NASDAQ100は`funds`の停止銘柄として取得）。はじめてのNISAは子供用の別枠のため統合ビューに含めない。`positions.items`の`hidden:true`は「基準価額の取得・保存のみ行い、カード/チャートタブ/LINEには出さない」（SBI・V・S&P500）。
 - **公開リポジトリ**: SBI証券の約定履歴CSV等の個人の取引明細はコミットしない。
 - **スコープ外**: 自動発注、高度な予測AI、複数ユーザー対応・ログイン機能、SOXの出口判定（売却判定）の自動化は要件定義で明示的に対象外。
 

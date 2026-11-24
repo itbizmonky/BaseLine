@@ -162,7 +162,7 @@ def build_daily_summary_message(
                 f"{gain:+.1f}%（{'含み益' if gain >= 0 else '含み損'}）" if gain is not None else "-（購入実績なし）"
             )
             lines.append(
-                f"⏹ {r['short_name']}（新規購入停止・表示のみ）:\n"
+                f"⏹ {r['short_name']}（{r.get('inactive_label') or '新規購入停止・表示のみ'}）:\n"
                 f"   最高値比: {format_drawdown(r['drawdown'])}\n"
                 f"   平均取得単価比: {gain_str}"
             )

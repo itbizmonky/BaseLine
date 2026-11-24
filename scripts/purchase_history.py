@@ -60,6 +60,19 @@ def filter_by_account(records: list[dict], account: str) -> list[dict]:
     return [r for r in records if record_account(r) == account]
 
 
+def filter_by_accounts(records: list[dict], accounts: list[str]) -> list[dict]:
+    """指定した口座区分（複数可）の実績だけを返す。"""
+    return [r for r in records if record_account(r) in accounts]
+
+
+def fund_cost_accounts(fund: dict | None) -> list[str]:
+    """
+    銘柄の平均取得単価・含み損益・グラフマーカーに使う口座区分を返す。
+    settings.json の funds[].cost_accounts（省略時は攻撃フェーズ=attack のみ。例: NASDAQ100は別枠積立のみ ["side"]）。
+    """
+    return list((fund or {}).get("cost_accounts") or [ACCOUNT_ATTACK])
+
+
 def record_units(r: dict) -> float | None:
     """
     実績1件の購入口数を返す。units が記録されていればそれを、なければ

@@ -23,8 +23,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from import_sbi_history import PURCHASE_FILE, ROOT, import_csv
-from purchase_history import ACCOUNT_ATTACK, calc_average_cost, filter_by_account, load_purchase_history
+import json
+
+from import_sbi_history import PURCHASE_FILE, ROOT, SETTINGS_PATH, import_csv
+from purchase_history import calc_average_cost, filter_by_accounts, fund_cost_accounts, load_purchase_history
 
 
 def confirm(message: str, assume_yes: bool) -> bool:
@@ -60,10 +62,11 @@ def main() -> int:
 
     import_csv(args.csv, include_attack=True, write=True)
 
-    print("\n=== 平均取得単価（攻撃フェーズ分） ===")
+    print("\n=== 平均取得単価（銘柄ごとの対象口座分。既定は攻撃フェーズ、NASDAQ100は別枠積立） ===")
     history = load_purchase_history()
+    funds = {f["id"]: f for f in json.loads(SETTINGS_PATH.read_text(encoding="utf-8")).get("funds", [])}
     for fund_id in sorted({f for f, _ in preview["added"]}):
-        avg = calc_average_cost(filter_by_account(history.get(fund_id, []), ACCOUNT_ATTACK))
+        avg = calc_average_cost(filter_by_accounts(history.get(fund_id, []), fund_cost_accounts(funds.get(fund_id))))
         if avg:
             print(f"  {fund_id:14s} {avg['avg_cost']:>9,.0f}円（{avg['count']}件・投入{avg['total_amount']:,.0f}円）")
 

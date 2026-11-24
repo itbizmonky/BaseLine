@@ -48,7 +48,8 @@ def build_integrated_view(settings: dict, purchase_history: dict, prices: dict) 
           "total_value": float|None,          # 全グループの合計。基準価額が欠けると None
           "satellite_value": float|None,
           "satellite_ratio": float|None,      # %。サテライト÷全体
-          "target_percent": float, "diff_pt": float|None,
+          "target_percent": float, "limit_percent": float|None, "diff_pt": float|None,
+          "satellite_status": "within_target"|"over_target"|"over_limit"|None,
           "satellite_names": [str],           # サテライトに含まれるグループ名
           "share_review": {"label", "fund_names", "value", "share", "threshold_percent",
                            "status": "keep"|"review"|"unset"|None, "note"} | None,
@@ -112,9 +113,18 @@ def build_integrated_view(settings: dict, purchase_history: dict, prices: dict) 
         g["share"] = g["total_value"] / total * 100 if calculable and total and total > 0 else None
 
     target = float(cfg.get("satellite_target_percent", 20))
+    limit = cfg.get("satellite_limit_percent")
     satellites = [g for g in groups if g["role"] == "satellite"]
     satellite = sum(g["total_value"] for g in satellites) if calculable else None
     ratio = satellite / total * 100 if calculable and total and total > 0 else None
+    if ratio is None:
+        sat_status = None
+    elif limit is not None and ratio > limit:
+        sat_status = "over_limit"
+    elif ratio > target:
+        sat_status = "over_target"
+    else:
+        sat_status = "within_target"
 
     # 維持判断ルール（比率ベース）: 指定グループが全体に占める割合が、基準（ユーザーが事前に決めた数値）を
     # 超えたら「見直し検討」。数値が未設定なら "unset"。表示専用で、売却等の自動実行はしない。
@@ -147,6 +157,8 @@ def build_integrated_view(settings: dict, purchase_history: dict, prices: dict) 
         "satellite_ratio": ratio,
         "satellite_names": [g["label"] for g in satellites],
         "target_percent": target,
+        "limit_percent": float(limit) if limit is not None else None,
+        "satellite_status": sat_status,
         "diff_pt": ratio - target if ratio is not None else None,
         "share_review": share_review,
         "provisional": cfg.get("provisional_note"),

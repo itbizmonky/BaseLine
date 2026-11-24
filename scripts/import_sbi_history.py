@@ -8,7 +8,8 @@ SBI証券の約定履歴CSVを data/purchase_history.json に取り込むスク�
 - 預り区分から口座を自動判定する（config/settings.json の sbi_import.account_map）:
     NISA (つみたて) → side（別枠積立） / NISA (成長) → attack（攻撃フェーズ）
   ただし別枠積立はクレジットカード払いで、Tracersのように成長投資枠のものもある（CSVに決済方法の列がない）ため、
-  sbi_import.side_fixed_amounts（銘柄ごとの別枠積立の固定金額）に一致する約定は side とみなす
+  sbi_import.side_fixed_amounts（銘柄ごとの別枠積立の固定金額）に一致する約定、および sbi_import.side_funds
+  （別枠積立でしか持たない銘柄。NASDAQ100）の約定は side とみなす
 - 既定では別枠積立（side）のみ取り込む。攻撃フェーズ（attack）は --include-attack を付けた場合のみ取り込み、
   区分は config/settings.json の sbi_import.attack_category_rules で日付から自動推定する
   （初回購入日→「①分」、毎月の積立の約定日（23〜27日）→「定期積立」、それ以外→「未分類」。Tier1〜3などは手動で書き換える）
@@ -90,6 +91,9 @@ def build_records(rows, cfg: dict, include_attack: bool) -> tuple[list[tuple[str
         # 別枠積立はクレジットカード払いの積立で、預り区分が成長投資枠のもの（Tracers）もある。CSVには決済方法の
         # 列がないため、銘柄ごとの別枠積立の固定金額（side_fixed_amounts）に一致する約定は別枠積立とみなす
         if amount in (cfg.get("side_fixed_amounts") or {}).get(fund_id, []):
+            account = "side"
+        # 別枠積立でしか持たない銘柄（NASDAQ100）は、金額・預り区分に関係なく別枠積立とみなす
+        if fund_id in (cfg.get("side_funds") or []):
             account = "side"
         if account is None or (account == "attack" and not include_attack):
             skipped_account += 1

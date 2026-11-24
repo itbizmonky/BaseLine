@@ -41,7 +41,7 @@ from positions import (
     calc_gain_loss_ratio, judge_gain_loss_level,
 )
 from purchase_history import (
-    ACCOUNT_ATTACK, calc_gain_vs_average, filter_by_account,
+    calc_gain_vs_average, filter_by_accounts, fund_cost_accounts,
     load_purchase_history, position_purchases, resolve_cost_basis,
 )
 from judge import (
@@ -303,9 +303,10 @@ def main(dry_run: bool = False) -> None:
     fund_results = []
     all_purchases = load_purchase_history()
 
-    def avg_cost_ratio(fund_id: str, nav: float | None) -> float | None:
-        """平均取得単価（攻撃フェーズ分）に対する現在の基準価額の損益率（%）。実績なしはNone。"""
-        return calc_gain_vs_average(filter_by_account(all_purchases.get(fund_id, []), ACCOUNT_ATTACK), nav)
+    def avg_cost_ratio(fund: dict, nav: float | None) -> float | None:
+        """平均取得単価（銘柄ごとの対象口座。既定は攻撃フェーズ）に対する現在の基準価額の損益率（%）。実績なしはNone。"""
+        records = filter_by_accounts(all_purchases.get(fund["id"], []), fund_cost_accounts(fund))
+        return calc_gain_vs_average(records, nav)
 
     for fund in funds:
         fid = fund["id"]
@@ -319,6 +320,7 @@ def main(dry_run: bool = False) -> None:
                 "trend_5d": "→",
                 "trend_20d": "→",
                 "avg_cost_ratio": None,
+                "inactive_label": fund.get("inactive_label"),
                 "active": fund.get("active", True),
                 **({} if fund.get("active", True) else {"decision": "INACTIVE"}),
             })
@@ -401,7 +403,8 @@ def main(dry_run: bool = False) -> None:
             "baseline_nav": baseline_nav,
             "baseline_ratio": baseline_ratio,
             "decision": decision,
-            "avg_cost_ratio": avg_cost_ratio(fid, nav),
+            "avg_cost_ratio": avg_cost_ratio(fund, nav),
+            "inactive_label": fund.get("inactive_label"),
             "active": active,
         })
 

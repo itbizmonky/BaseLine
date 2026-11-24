@@ -18,13 +18,16 @@ from pathlib import Path
 
 from judge import decision_display, format_baseline_ratio, format_drawdown
 from portfolio import build_integrated_view
-from purchase_history import ACCOUNT_ATTACK, calc_average_cost, filter_by_account, position_purchases, resolve_cost_basis
+from purchase_history import calc_average_cost, filter_by_accounts, fund_cost_accounts, position_purchases, resolve_cost_basis
 
 logger = logging.getLogger(__name__)
 
 PUBLIC_DIR = Path(__file__).parent.parent / "public"
 
-INACTIVE_TAG = '<span class="inactive-tag">（新規購入停止・監視終了）</span>'
+def _inactive_tag(fund: dict) -> str:
+    """停止（表示のみ）銘柄の見出しタグ。funds[].inactive_label があればその文言、なければ従来の「新規購入停止・監視終了」。"""
+    label = fund.get("inactive_label") or "新規購入停止・監視終了"
+    return f'<span class="inactive-tag">（{label}）</span>'
 
 
 def generate(
@@ -54,7 +57,7 @@ def generate(
     average_cost_html = _build_average_cost_section(settings, purchase_history or {}, navs, history)
     prices = _current_prices(settings, navs, history, positions_display or {})
     integrated_html = _build_integrated_section(build_integrated_view(settings, purchase_history or {}, prices))
-    ops_html = _build_monthly_ops_section(settings)
+    ops_html = _build_monthly_ops_section(settings, today_str)
     usdjpy_rate = (market_display or {}).get("usdjpy", {}).get("value")
     positions_chart_data = _build_positions_chart_data(positions_history or [], settings, usdjpy_rate, purchase_history or {})
 
@@ -161,7 +164,7 @@ def _build_chart_data(history: list[dict], settings: dict, peak: dict, purchase_
     purchase_markers = {}
     for fund in settings["funds"]:
         fid = fund["id"]
-        records = filter_by_account((purchase_history or {}).get(fid, []), ACCOUNT_ATTACK)
+        records = filter_by_accounts((purchase_history or {}).get(fid, []), fund_cost_accounts(fund))
         markers = []
         for r in records:
             if not r.get("price"):
@@ -256,6 +259,7 @@ def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
     rows = []
     fund_colors = {f["id"]: f["color"] for f in settings["funds"]}
     inactive_ids = {f["id"] for f in settings["funds"] if not f.get("active", True)}
+    fund_by_id = {f["id"]: f for f in settings["funds"]}
 
     for r in fund_results:
         color = fund_colors.get(r["fund_id"], "#ffffff")
@@ -263,6 +267,9 @@ def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
         info = decision_display(decision)
         dec_emoji = f"{info['emoji']} {info['tag']}"
         dec_label = info["label"]
+        custom_label = fund_by_id.get(r["fund_id"], {}).get("inactive_label") if r["fund_id"] in inactive_ids else None
+        if custom_label:
+            dec_emoji, dec_label = "⏹ 表示のみ", custom_label
         dec_class = f"badge-{info['css']}"
 
         tier_val = r["tier"]
@@ -280,7 +287,7 @@ def _build_summary_table(fund_results: list[dict], settings: dict) -> str:
             f'    <div style="display:flex;align-items:center;gap:8px;">'
             f'      <span class="fund-dot" style="background-color:{color};box-shadow:0 0 6px {color}"></span>'
             f'      <span style="font-weight:600;">{r["short_name"]}</span>'
-            f'{INACTIVE_TAG if r["fund_id"] in inactive_ids else ""}'
+            f'{_inactive_tag(fund_by_id[r["fund_id"]]) if r["fund_id"] in inactive_ids else ""}'
             f'    </div>'
             f'  </td>'
             f'  <td data-label="最高値比 (下落率)"><span class="val-drawdown">{format_drawdown(r["drawdown"])}</span></td>'
@@ -330,8 +337,11 @@ def _build_fund_cards(
         dec_emoji = f"{info['emoji']} {info['tag']}"
         dec_label = info["label"]
         dec_class = f"dec-{info['css']}"
+        stop_label = fund.get("inactive_label") or "新規購入停止"
+        if not is_active and fund.get("inactive_label"):
+            dec_emoji, dec_label = "⏹ 表示のみ", stop_label
 
-        next_tier_text = _next_tier_text(tier, drawdown, tiers) if (is_active and tiers) else "新規購入停止（Tier判定なし）"
+        next_tier_text = _next_tier_text(tier, drawdown, tiers) if (is_active and tiers) else f"Tier判定なし（{stop_label}）"
 
         nav_str = f"{nav:,.0f}円" if nav is not None else "取得失敗"
         peak_str = f"{peak_val:,.0f}円" if peak_val is not None else "未記録"
@@ -339,7 +349,7 @@ def _build_fund_cards(
         
         drawdown_str = format_drawdown(drawdown) if nav is not None else "-"
         baseline_ratio_str = format_baseline_ratio(baseline_ratio) if nav is not None else "-"
-        inactive_tag = INACTIVE_TAG if not fund.get("active", True) else ""
+        inactive_tag = _inactive_tag(fund) if not fund.get("active", True) else ""
 
         tier_bars = _tier_bars(tier, tiers, color)
         if is_active and tiers:
@@ -348,7 +358,7 @@ def _build_fund_cards(
                 f'<div class="tier-progress">{tier_bars}</div>'
             )
         else:
-            tier_section = '<div class="market-card__note">新規購入停止のため、Tier判定・購入判定は行いません（基準価額と含み損益の表示のみ）。</div>'
+            tier_section = f'<div class="market-card__note">{stop_label}のため、Tier判定・購入判定は行いません（基準価額と含み損益の表示のみ）。</div>'
 
         card = f"""
 <div class="fund-card" style="--fund-color: {color}">
@@ -571,8 +581,8 @@ def _ratio_block(title: str, value_html: str, badge: str, formula: str, amounts:
     )
 
 
-def _bar(share: float, marker: float | None, marker_label: str) -> str:
-    """割合バー（塗り＝現在値、黄色の線＝目標または基準）。"""
+def _bar(share: float, marker: float | None, marker_label: str, limit: float | None = None, limit_label: str = "") -> str:
+    """割合バー（塗り＝現在値、黄色の線＝目標または基準、赤い線＝上限）。"""
     fill = max(0.0, min(share, 100.0))
     mk = ""
     if marker is not None:
@@ -580,6 +590,12 @@ def _bar(share: float, marker: float | None, marker_label: str) -> str:
         mk = (
             f'<div class="sat-bar__target" style="left:{m:.1f}%"></div>'
             f'<div class="sat-bar__target-label" style="left:{m:.1f}%">{marker_label}</div>'
+        )
+    if limit is not None:
+        lm = max(0.0, min(limit, 100.0))
+        mk += (
+            f'<div class="sat-bar__limit" style="left:{lm:.1f}%"></div>'
+            f'<div class="sat-bar__limit-label" style="left:{lm:.1f}%">{limit_label}</div>'
         )
     return f'<div class="sat-bar"><div class="sat-bar__fill" style="width:{fill:.1f}%"></div>{mk}</div>'
 
@@ -600,7 +616,7 @@ def _build_integrated_section(view: dict | None) -> str:
     all_names = "、".join(n for g in groups for n in g["fund_names"])
 
     # ---- サテライト比率
-    ratio, target = view["satellite_ratio"], view["target_percent"]
+    ratio, target, limit = view["satellite_ratio"], view["target_percent"], view.get("limit_percent")
     sat_formula = "（" + "＋".join(view["satellite_names"]) + "）÷ 全体"
     if ratio is None:
         sat_block = _ratio_block(
@@ -609,15 +625,20 @@ def _build_integrated_section(view: dict | None) -> str:
         )
     else:
         diff = view["diff_pt"]
-        badge = (
-            f'<span class="status-badge {"pos-warning" if diff > 0 else "pos-good"}">'
-            f'目標より {abs(diff):.1f}pt {"高い" if diff > 0 else "低い"}</span>'
-        )
+        status = view.get("satellite_status")
+        if status == "over_limit":
+            badge_css, badge_txt = "pos-warning", f"上限{limit:g}%を超過（目標より {abs(diff):.1f}pt 高い）"
+        elif status == "over_target":
+            badge_css, badge_txt = "pos-caution", f"目標超過・上限内（目標より {abs(diff):.1f}pt 高い）"
+        else:
+            badge_css, badge_txt = "pos-good", f"目標以内（目標まであと {abs(diff):.1f}pt）"
+        badge = f'<span class="status-badge {badge_css}">{badge_txt}</span>'
+        title = f"サテライト比率（目標 {target:.0f}%" + (f"・上限 {limit:g}%）" if limit is not None else "）")
         sat_block = _ratio_block(
-            f"サテライト比率（目標 {target:.0f}%）",
+            title,
             f'<span class="sat-hero__value">{ratio:.1f}%</span>', badge, sat_formula,
             f"{_yen(view['satellite_value'])} ÷ {_yen(total)}",
-            _bar(ratio, target, f"目標{target:.0f}%"),
+            _bar(ratio, target, f"目標{target:.0f}%", limit, f"上限{limit:g}%" if limit is not None else ""),
         )
 
     # ---- 維持判断ルール（比率ベース。例: S&P500比率）
@@ -702,7 +723,21 @@ def _build_integrated_section(view: dict | None) -> str:
     )
 
 
-def _build_monthly_ops_section(settings: dict) -> str:
+def _schedule_phase(block: dict, today_str: str) -> tuple[list[dict], dict | None]:
+    """
+    積立設定のブロックから、今日（YYYY-MM-DD）に有効な積立内容と、次に切り替わる予定の内容を返す。
+    block に phases（[{"from": 日付, "items": [...], "note": 任意}]）があれば from が今日以前で最新のものを現行、
+    今日より後で最も近いものを予定とする。phases がなければ block["items"] を現行とする。
+    """
+    phases = sorted(block.get("phases") or [], key=lambda p: p["from"])
+    if not phases:
+        return block.get("items", []), None
+    current = [p for p in phases if p["from"] <= today_str]
+    upcoming = [p for p in phases if p["from"] > today_str]
+    return (current[-1]["items"] if current else phases[0]["items"]), (upcoming[0] if upcoming else None)
+
+
+def _build_monthly_ops_section(settings: dict, today_str: str = "") -> str:
     """
     毎月の運用手順のサマリ（開閉式ガイド）のHTMLを生成する。
     自動で行われること／毎月の作業／Tier到達時の対応／節目の判断を、手順どおりに並べる。
@@ -710,6 +745,7 @@ def _build_monthly_ops_section(settings: dict) -> str:
     """
     lt = settings.get("long_term_portfolio", {})
     target = lt.get("satellite_target_percent", 20)
+    limit = lt.get("satellite_limit_percent")
     thr = (lt.get("share_review") or {}).get("threshold_percent")
     thr_txt = f"{thr:g}%" if thr is not None else "未設定"
 
@@ -717,15 +753,23 @@ def _build_monthly_ops_section(settings: dict) -> str:
         b = (settings.get("monthly_schedule") or {}).get(key)
         if not b:
             return ""
-        items = "／".join(
-            f'{i["fund"]} {i["amount"]:,}円' + (f'（{i["account_label"]}）' if i.get("account_label") else "")
-            for i in b.get("items", [])
-        )
-        total = sum(i["amount"] for i in b.get("items", []))
-        return (
+        def fmt(items: list[dict]) -> str:
+            text = "／".join(
+                f'{i["fund"]} {i["amount"]:,}円' + (f'（{i["account_label"]}）' if i.get("account_label") else "")
+                for i in items
+            )
+            return f'{text}（月 {sum(i["amount"] for i in items):,}円）'
+
+        cur_items, upcoming = _schedule_phase(b, today_str or "9999-12-31")
+        line = (
             f'<li><strong>{b["label"]}</strong>（{b.get("payment", "")}）: 毎月{b["order_day"]}日に発注、約定は{b.get("execution_day", b["order_day"])}日前後 → '
-            f'{items}（月 {total:,}円）</li>'
+            f'{fmt(cur_items)}'
         )
+        if upcoming:
+            y, m, d = upcoming["from"].split("-")
+            note = upcoming.get("note") or f"{int(m)}/{int(d)}発注分から"
+            line += f'<br><span style="color:var(--yellow);">▶ {note}の新構成: {fmt(upcoming["items"])}</span>'
+        return line + '</li>'
 
     schedule_html = schedule_line("attack") + schedule_line("side")
 
@@ -765,7 +809,7 @@ def _build_monthly_ops_section(settings: dict) -> str:
         '</ul>'
         '<h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📊 毎月見る数字</h4>'
         '<ul style="padding-left: 0;">'
-        f'<li><strong>サテライト比率</strong>: 目標 {target:g}%（現在値との差が表示されます）</li>'
+        f'<li><strong>サテライト比率</strong>: 目標 {target:g}%' + (f'・上限 {limit:g}%' if limit is not None else '') + '（現在値との差・上限超過の有無が表示されます）</li>'
         f'<li><strong>S&amp;P500比率</strong>: 維持判断の基準 {thr_txt}（超えていると「見直し検討」と表示。表示のみで自動売却はしません）</li>'
         '<li><strong>SOXの平均取得単価</strong>: 2028年月初の出口判定（上回れば売却、下回れば最大12ヶ月延長監視）に使います。</li>'
         '</ul>'
@@ -791,13 +835,13 @@ def _build_average_cost_section(settings: dict, purchase_history: dict, navs: di
     cards = []
     for fund in settings["funds"]:
         fid = fund["id"]
-        records = filter_by_account(purchase_history.get(fid, []), ACCOUNT_ATTACK)
+        records = filter_by_accounts(purchase_history.get(fid, []), fund_cost_accounts(fund))
         if not fund.get("active", True) and not records:
             continue
 
         avg = calc_average_cost(records)
         excluded = len(records) - (avg["count"] if avg else 0)
-        inactive_tag = INACTIVE_TAG if not fund.get("active", True) else ""
+        inactive_tag = _inactive_tag(fund) if not fund.get("active", True) else ""
         color = fund.get("color", "#94a3b8")
 
         current = navs.get(fid)
@@ -913,7 +957,7 @@ def _render_html(
     phase_type = period_info.get("phase", "none")
 
     fund_tabs = "".join(
-        f'<button class="chart-tab" data-fund="{f["id"]}">{f["short_name"]}{"（停止）" if not f.get("active", True) else ""}</button>'
+        f'<button class="chart-tab" data-fund="{f["id"]}">{f["short_name"]}{("（表示のみ）" if f.get("inactive_label") else "（停止）") if not f.get("active", True) else ""}</button>'
         for f in settings["funds"]
     )
     positions_tabs = "".join(
@@ -1079,10 +1123,12 @@ body{{
 .sat-hero__label{{ font-size: 12px; font-weight: 700; color: var(--text-mute); margin-bottom: 6px; }}
 .sat-hero__row{{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }}
 .sat-hero__value{{ font-size: 34px; font-weight: 700; font-family: 'Outfit', sans-serif; color: var(--text); }}
-.sat-bar{{ position: relative; height: 12px; background: rgba(255,255,255,0.06); border-radius: 6px; margin: 22px 0 8px; }}
+.sat-bar{{ position: relative; height: 12px; background: rgba(255,255,255,0.06); border-radius: 6px; margin: 22px 0 26px; }}
 .sat-bar__fill{{ height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); border-radius: 6px; }}
 .sat-bar__target{{ position: absolute; top: -5px; width: 2px; height: 22px; background: var(--yellow); }}
 .sat-bar__target-label{{ position: absolute; top: -22px; transform: translateX(-50%); font-size: 10px; color: var(--yellow); white-space: nowrap; }}
+.sat-bar__limit{{ position: absolute; top: -5px; width: 2px; height: 22px; background: var(--red); }}
+.sat-bar__limit-label{{ position: absolute; top: 18px; transform: translateX(-50%); font-size: 10px; color: var(--red); white-space: nowrap; }}
 .pf-warn{{ font-size: 11px; color: var(--yellow); margin-bottom: 12px; line-height: 1.6; }}
 .fund-card__metrics{{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }}
 .metric-item{{ background: #080a0e; box-shadow: var(--shadow-in); border-radius: var(--inner-radius); padding: 12px; }}

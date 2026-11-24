@@ -46,7 +46,7 @@ from judge import (
     load_triggered, save_triggered,
     load_history, append_history,
     update_peak,
-    calc_drawdown, judge_tier, calc_baseline_ratio, format_baseline_ratio,
+    calc_drawdown, judge_tier, calc_day_change,
     is_new_trigger, record_notified, rearm_if_recovered, calc_trend,
     DEFAULT_REARM_RATIO,
 )
@@ -267,7 +267,6 @@ def main(dry_run: bool = False) -> None:
     alert_ids = {a["id"] for a in assets if a["alert"]}
     triggered = {k: v for k, v in load_triggered().items() if k in alert_ids}
     results = []
-    baseline_prices = baseline.get("prices", {})
 
     for asset in assets:
         aid = asset["id"]
@@ -283,7 +282,6 @@ def main(dry_run: bool = False) -> None:
 
         peak_info = peak.get(aid, {})
         peak_val = peak_info.get("value")
-        baseline_price = baseline_prices.get(aid)
 
         result = {
             "asset_id": aid,
@@ -300,10 +298,9 @@ def main(dry_run: bool = False) -> None:
             "stale": stale,
             "peak_value": peak_val,
             "peak_date": peak_info.get("date"),
-            "baseline_price": baseline_price,
+            "day_change": calc_day_change(trend_rows, aid, price, today_str),
             "drawdown": None,
             "tier": 0,
-            "baseline_ratio": None,
             "avg_cost_ratio": None,
             "trend_5d": calc_trend(trend_rows, aid, days=5),
             "trend_20d": calc_trend(trend_rows, aid, days=20),
@@ -318,13 +315,12 @@ def main(dry_run: bool = False) -> None:
         result.update({
             "drawdown": drawdown,
             "tier": tier,
-            "baseline_ratio": calc_baseline_ratio(price, baseline_price) if baseline_price else None,
             "avg_cost_ratio": avg_ratio,
         })
         results.append(result)
         logger.info(
             f"{asset['short_name']}: 現在値={price:,.2f} / 高値={peak_val:,.2f} / 最高値比={drawdown:.2f}% / "
-            f"基準日比={format_baseline_ratio(result['baseline_ratio'], 2)} / Tier={tier}"
+            f"前日比={result['day_change'] if result['day_change'] is None else format(result['day_change'], '+.2f') + '%'} / Tier={tier}"
         )
 
         # alert対象は、新しいTierに到達したときだけLINE通知する（重複通知防止・回復後に再武装）。

@@ -3,7 +3,7 @@ generate_dashboard.py
 =====================
 HTMLダッシュボード生成モジュール。
 
-monitor.py から呼び出され、全保有資産（投資信託・米国株）の最高値比・基準日比・平均取得単価比・
+monitor.py から呼び出され、全保有資産（投資信託・米国株）の前日比・最高値比・平均取得単価比・
 Tier到達状況をもとに public/index.html を生成する。
 
 生成されたHTMLはGitHub Pagesで公開される。
@@ -18,7 +18,7 @@ from pathlib import Path
 
 from assets import KIND_FUND, all_assets
 from funding import load_status
-from judge import format_baseline_ratio, format_drawdown
+from judge import format_drawdown
 from portfolio import build_integrated_view
 from purchase_history import calc_average_cost, cost_records, purchase_markers
 
@@ -75,9 +75,9 @@ def generate(
 
     chart_data = _build_chart_data(assets, history, positions_history, settings, peak, usdjpy, purchases)
     summary_html = _build_summary_table(results)
-    cards_html = _build_asset_cards(results, settings, purchases)
-    market_html = _build_market_sentiment(market_display or {})
     view = build_integrated_view(settings, purchases, _current_prices(results, history), usdjpy)
+    cards_html = _build_asset_cards(results, settings, purchases, view)
+    market_html = _build_market_sentiment(market_display or {})
     integrated_html = _build_integrated_section(view)
     funding_html = _build_funding_section(load_status())
     ops_html = _build_monthly_ops_section(settings, today_str)
@@ -236,7 +236,6 @@ def _build_summary_table(results: list[dict]) -> str:
     rows = []
     for r in results:
         tier_text, tier_css = _tier_status(r)
-        drawdown = format_drawdown(r["drawdown"]) if r.get("drawdown") is not None else "-"
         stale = '<span class="inactive-tag">（前回値）</span>' if r.get("stale") else ""
         rows.append(
             f'<tr>'
@@ -246,8 +245,7 @@ def _build_summary_table(results: list[dict]) -> str:
             f'      <span style="font-weight:600;">{r["short_name"]}</span>{_role_tag(r["role"])}{stale}'
             f'    </div>'
             f'  </td>'
-            f'  <td data-label="最高値比 (下落率)"><span class="val-drawdown">{drawdown}</span></td>'
-            f'  <td data-label="基準日比">{format_baseline_ratio(r.get("baseline_ratio"))}</td>'
+            f'  <td data-label="前日比">{_gain_html(r.get("day_change"))}</td>'
             f'  <td data-label="平均取得単価比">{_gain_html(r.get("avg_cost_ratio"))}</td>'
             f'  <td data-label="Tier到達"><span class="val-tier {tier_css}">{tier_text}</span></td>'
             f'</tr>'
@@ -259,9 +257,9 @@ def _build_summary_table(results: list[dict]) -> str:
 # 銘柄カード HTML（全保有資産）
 # ------------------------------------------------------------------
 
-def _build_asset_cards(results: list[dict], settings: dict, purchase_history: dict) -> str:
-    baseline = settings.get("baseline", {})
-    baseline_dates = baseline.get("dates", {})
+def _build_asset_cards(results: list[dict], settings: dict, purchase_history: dict, view: dict | None = None) -> str:
+    baseline_dates = settings.get("baseline", {}).get("dates", {})
+    holdings = {r["id"]: r for r in ((view or {}).get("rows", []) + (view or {}).get("separate", []))}
     default_start = settings.get("peak_start_date", "")
     html_parts = []
 
@@ -278,11 +276,16 @@ def _build_asset_cards(results: list[dict], settings: dict, purchase_history: di
         stale_note = f'<div class="metric-sub">※取得失敗のため{r["price_date"]}の値</div>' if r.get("stale") else ""
         peak_str = _fmt_price(r.get("peak_value"), currency) if r.get("peak_value") is not None else "未記録"
         peak_sub = f'{r.get("peak_date") or "-"} 記録（起点 {start}）'
-        base_price = r.get("baseline_price")
-        base_str = _fmt_price(base_price, currency) if base_price else "未設定"
+        held = holdings.get(aid)
+        if held and held.get("value") is not None:
+            value_str = f"{held['value']:,.0f}円"
+            share = held.get("share")
+            value_sub = f"全体の {share:.1f}%" if share is not None else "別会計（比率の分母に含めない）"
+        else:
+            value_str, value_sub = "-", "保有なし／評価不可"
 
         if tiers and drawdown is not None:
-            next_text = _next_tier_text(r["tier"], drawdown, tiers)
+            next_text = _next_tier_text(r["tier"], tiers, r.get("peak_value"), currency)
             tier_section = (
                 '<div class="tier-indicator-title">下落の目安 (Tier) 到達状況</div>'
                 f'<div class="tier-progress">{_tier_bars(r["tier"], tiers, color)}</div>'
@@ -305,6 +308,7 @@ def _build_asset_cards(results: list[dict], settings: dict, purchase_history: di
     <div class="metric-item">
       <div class="metric-label">現在値</div>
       <div class="metric-value">{price_str}</div>
+      <div class="metric-sub">前日比: {_gain_html(r.get('day_change'))}</div>
       {stale_note}
     </div>
     <div class="metric-item">
@@ -323,9 +327,9 @@ def _build_asset_cards(results: list[dict], settings: dict, purchase_history: di
       <div class="metric-sub">比: {_gain_html(r.get('avg_cost_ratio'))}</div>
     </div>
     <div class="metric-item">
-      <div class="metric-label">基準日価格</div>
-      <div class="metric-value">{base_str}</div>
-      <div class="metric-sub">比: <span style="color:var(--text); font-weight:600;">{format_baseline_ratio(r.get('baseline_ratio'))}</span></div>
+      <div class="metric-label">評価額（構成比）</div>
+      <div class="metric-value">{value_str}</div>
+      <div class="metric-sub">{value_sub}</div>
     </div>
   </div>
 
@@ -335,11 +339,15 @@ def _build_asset_cards(results: list[dict], settings: dict, purchase_history: di
     return "\n".join(html_parts)
 
 
-def _next_tier_text(tier: int, drawdown: float, tiers: list) -> str:
-    if tier < len(tiers):
-        gap = tiers[tier] - drawdown
-        return f"Tier{tier + 1} (-{tiers[tier]}%) まであと {gap:.1f}pt"
-    return "Tier3上限超過済"
+def _next_tier_text(tier: int, tiers: list, peak: float | None, currency: str) -> str:
+    """次のTierに達する価格（最高値 × (1 − しきい値)）を表示する。例: 「次のTier1 (-11%): 40,700円」。"""
+    if tier >= len(tiers):
+        return "Tier3上限超過済"
+    threshold = tiers[tier]
+    if not peak:
+        return f"次のTier{tier + 1} (-{threshold}%)"
+    price = peak * (1 - threshold / 100)
+    return f"次のTier{tier + 1} (-{threshold}%): {_fmt_price(price, currency)}"
 
 
 def _tier_bars(tier: int, tiers: list, color: str) -> str:
@@ -513,14 +521,17 @@ def _build_integrated_section(view: dict | None) -> str:
     rows = []
     for r in view["rows"]:
         share = r.get("share")
-        share_cell = f'{share:.1f}%{_bar(share)}' if share is not None else "-"
+        share_cell = f'<div class="pf-share"><span>{share:.1f}%</span>{_bar(share)}</div>' if share is not None else "-"
         detail = "／".join(
             f'{a["label"]} {_yen(a["value"])}' for a in r["accounts"] if len(r["accounts"]) > 1
         )
+        detail_html = f'<div class="market-card__note">{detail}</div>' if detail else ""
         rows.append(
             '<tr>'
-            f'<td data-label="銘柄"><span class="fund-dot" style="background-color:{r["color"]}"></span> '
-            f'<span style="font-weight:600;">{r["short_name"]}</span><div class="market-card__note">{detail}</div></td>'
+            f'<td data-label="銘柄"><div class="pf-name"><div class="pf-name__title">'
+            f'<span class="fund-dot" style="background-color:{r["color"]}"></span>'
+            f'<span style="font-weight:600;">{r["short_name"]}</span></div>'
+            f'{detail_html}</div></td>'
             f'<td data-label="区分">{ROLE_LABELS.get(r["role"], r["role"])}</td>'
             f'<td data-label="評価額">{_yen(r["value"])}</td>'
             f'<td data-label="全体に占める割合">{share_cell}</td>'
@@ -631,7 +642,7 @@ def _build_monthly_ops_section(settings: dict, today_str: str = "") -> str:
         '</ul>'
         '<h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📊 毎月見る数字</h4>'
         '<ul style="padding-left: 0;">'
-        '<li><strong>投資意思決定サマリー</strong>: 全保有銘柄の最高値比・基準日比・平均取得単価比・Tierの到達状況。</li>'
+        '<li><strong>投資意思決定サマリー</strong>: 全保有銘柄の前日比・平均取得単価比・Tierの到達状況（最高値比は銘柄毎の詳細で確認）。</li>'
         '<li><strong>資金投入管理状況</strong>: 原資で積立が続けられる月数と、NISA枠（成長・つみたて）の使用率。</li>'
         '<li><strong>長期ポートフォリオ</strong>: コア（オルカン・S&amp;P500系）とサテライト（それ以外）の割合。</li>'
         '</ul>'
@@ -798,6 +809,10 @@ body{{
 .summary-table tr:last-child td{{ border-bottom: none; }}
 .summary-table td:first-child{{ font-family: 'Noto Sans JP', sans-serif; }}
 .fund-dot{{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; }}
+.pf-name{{ display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; }}
+.pf-name__title{{ display: flex; align-items: center; gap: 8px; }}
+.pf-share{{ display: flex; align-items: center; gap: 10px; }}
+.pf-share .sat-bar{{ margin: 0; width: 90px; height: 8px; flex: none; }}
 .val-drawdown{{ color: var(--red); font-weight: 700; }}
 .val-tier{{ font-weight: 600; color: var(--blue); }}
 
@@ -925,7 +940,7 @@ html, body{{ overflow-x: hidden; }}
   .summary-table tr:last-child{{ border-bottom: none; }}
   .summary-table td{{ display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 6px; border: none; font-size: 13px; }}
   .summary-table td::before{{ content: attr(data-label); color: var(--text-mute); font-size: 11px; white-space: nowrap; }}
-  .summary-table td:first-child{{ font-size: 14px; padding-bottom: 6px; }}
+  .summary-table td:first-child{{ font-size: 14px; padding-bottom: 6px; justify-content: flex-start; text-align: left; }}
   .summary-table td:first-child::before{{ content: none; }}
   .funds-table th, .funds-table td{{ padding: 10px 4px; font-size: 12px; }}
 }}
@@ -970,9 +985,9 @@ html, body{{ overflow-x: hidden; }}
         <div class="guide-item">
           <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">📐 数字の見方</h4>
           <ul style="padding-left: 0;">
-            <li style="margin-bottom:8px;"><strong>最高値比（下落率）:</strong> {peak_start_date}（資産によっては最初に購入した日）以降の設定来最高値から、現在値が何％下がっているか（例: <code>-15.0%</code>）。</li>
-            <li style="margin-bottom:8px;"><strong>基準日比:</strong> 基準日（2026-07-07。資産ごとに最初に購入した日のものもあります）の価格に対する、現在値の上昇・下落率。</li>
-            <li style="margin-bottom:8px;"><strong>平均取得単価比:</strong> 約定履歴から計算した平均取得単価（旧つみたてNISAを除く）に対する、現在値の損益率。米国株はUSD基準で、為替の影響を含みません。</li>
+            <li style="margin-bottom:8px;"><strong>最高値比（下落率）:</strong> {peak_start_date}（資産によっては最初に購入した日）以降の設定来最高値から、現在値が何％下がっているか（例: <code>-15.0%</code>）。銘柄毎の詳細とLINEに表示します（LINEでは「最高比」）。</li>
+            <li style="margin-bottom:8px;"><strong>前日比:</strong> 直前の記録（値が変わった前営業日）に対する、現在値の上昇・下落率。</li>
+            <li style="margin-bottom:8px;"><strong>平均取得単価比:</strong> 約定履歴から計算した平均取得単価（旧つみたてNISAを除く）に対する、現在値の損益率（LINEでは「平均比」）。米国株はUSD基準で、為替の影響を含みません。</li>
             <li style="margin-bottom:8px;"><strong>Tier:</strong> 最高値比の「下落の目安」（Tier1〜3）。購入の指示や推奨ではありません。しきい値は銘柄ごとに <code>config/settings.json</code> で設定し、未設定の銘柄は「Tier未設定」と表示します。</li>
             <li style="margin-bottom:8px;"><strong>価格のタイミング:</strong> 投資信託の基準価額は前営業日の海外市場終値をもとに決まるため、数字は1営業日遅れで更新されます。</li>
           </ul>
@@ -981,7 +996,7 @@ html, body{{ overflow-x: hidden; }}
           <h4 style="color:var(--text); margin-bottom:8px; font-weight:700;">🔔 LINE通知のルール</h4>
           <ul style="padding-left: 0;">
             <li style="margin-bottom:8px;">下落アラートの対象は積立対象の銘柄（オルカン・S&amp;P500・Tracers・NASDAQ100）。新しいTierに到達したときだけ通知し、下落が続いている間は再通知しません。下落率がそのTierのしきい値の半分より浅くなると解除され、再び下落したときに通知されます。</li>
-            <li style="margin-bottom:8px;">LINEの内容は<strong>最高値比と平均取得単価比だけ</strong>です。購入額や売買の指示は含みません。毎朝の日次サマリーは、全保有銘柄の最高値比と平均取得単価比です。</li>
+            <li style="margin-bottom:8px;">LINEの内容は<strong>最高比（最高値比）と平均比（平均取得単価比）だけ</strong>で、プラスは緑・マイナスは赤で表示します。購入額や売買の指示は含みません。毎朝の日次サマリーは、全保有銘柄の最高比と平均比です。</li>
           </ul>
           <h4 style="color:var(--text); margin: 14px 0 8px; font-weight:700;">📌 運用ルール</h4>
           <ul style="padding-left: 0;">
@@ -1006,8 +1021,7 @@ html, body{{ overflow-x: hidden; }}
         <thead>
           <tr>
             <th>銘柄</th>
-            <th>最高値比 (下落率)</th>
-            <th>基準日比</th>
+            <th>前日比</th>
             <th>平均取得単価比</th>
             <th>Tier到達</th>
           </tr>

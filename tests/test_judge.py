@@ -10,7 +10,7 @@ except ImportError:
 
 import judge
 from judge import (
-    calc_drawdown, is_new_trigger, judge_tier, load_triggered, notified_tier,
+    calc_day_change, calc_drawdown, is_new_trigger, judge_tier, load_triggered, notified_tier,
     record_notified, rearm_if_recovered, seed_initial_peak, update_peak,
 )
 
@@ -27,6 +27,26 @@ class DrawdownTierTest(unittest.TestCase):
         self.assertEqual(judge_tier(10, TIERS), 1)
         self.assertEqual(judge_tier(28, TIERS), 3)
         self.assertEqual(judge_tier(50, []), 0)  # Tier未設定
+
+
+class DayChangeTest(unittest.TestCase):
+    ROWS = [
+        {"date": "2026-11-19", "a": 100.0},
+        {"date": "2026-11-20", "a": 110.0},
+        {"date": "2026-11-23", "a": 110.0},   # 祝日で前日と同値
+        {"date": "2026-11-24", "a": 110.0},   # 今日の行（無視される）
+    ]
+
+    def test_compares_with_last_different_value_skipping_holiday_duplicates(self):
+        self.assertAlmostEqual(calc_day_change(self.ROWS, "a", 121.0, "2026-11-24"), 10.0)
+
+    def test_same_price_looks_back_further_and_today_row_is_ignored(self):
+        self.assertAlmostEqual(calc_day_change(self.ROWS, "a", 110.0, "2026-11-24"), 10.0)  # 100→110
+
+    def test_none_when_no_price_or_no_history(self):
+        self.assertIsNone(calc_day_change(self.ROWS, "a", None, "2026-11-24"))
+        self.assertIsNone(calc_day_change([], "a", 100.0, "2026-11-24"))
+        self.assertIsNone(calc_day_change(self.ROWS, "missing", 100.0, "2026-11-24"))
 
 
 class AlertStateTest(unittest.TestCase):

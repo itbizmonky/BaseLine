@@ -226,7 +226,7 @@ def seed_initial_peak(
 
 
 # ------------------------------------------------------------------
-# 下落率・Tier判定・基準日比
+# 下落率・Tier判定・前日比
 # ------------------------------------------------------------------
 
 def calc_drawdown(current_nav: float, peak_nav: float) -> float:
@@ -258,21 +258,24 @@ def judge_tier(drawdown: float, thresholds: list[float]) -> int:
     return tier
 
 
-def calc_baseline_ratio(current_nav: float, baseline_nav: float) -> float:
+def calc_day_change(rows: list[dict], asset_id: str, price: float | None, today_str: str) -> float | None:
     """
-    基準日比（上昇/下落率）を計算する（%で返す）。
-    (現在値 - 基準日価格) / 基準日価格 * 100
+    前日比（%）。現在値 price と、直前の（値が異なる）記録との差。
+    今日の日付の行は無視する（同日の再実行でも同じ結果にするため）。祝日などで前日と同じ値が続く行は
+    飛ばして、値が変わった直前の記録と比べる（休場日の「0.0%」を避ける）。比べる記録がなければ None。
     """
-    if baseline_nav <= 0:
-        return 0.0
-    return (current_nav - baseline_nav) / baseline_nav * 100
-
-
-def format_baseline_ratio(ratio: float | None, decimals: int = 1) -> str:
-    """基準日比を表示用文字列に整形する。基準日価格が未設定でratioがNoneの場合は「-」。"""
-    if ratio is None:
-        return "-"
-    return f"{ratio:+.{decimals}f}%"
+    if price is None:
+        return None
+    for row in reversed(rows):
+        if row.get("date") == today_str:
+            continue
+        prev = row.get(asset_id)
+        if prev is None or prev == price:
+            continue
+        if prev <= 0:
+            return None
+        return (price - prev) / prev * 100
+    return None
 
 
 def format_drawdown(drawdown: float, decimals: int = 1) -> str:

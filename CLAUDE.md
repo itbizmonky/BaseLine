@@ -37,8 +37,8 @@
 2.5. `market_data.py`（市場心理指標）・`positions.py`（米国株TSLA・NVDAの株価。Yahoo Finance チャートAPI）を取得。失敗しても処理を継続（米国株は前回値を維持）
 3. 取得失敗の資産があれば `notify_fetch_error()` でLINE通知（F-11）
 4. `judge.py`: `data/peak.json`（設定来高値）を資産ごとの起点日（`baseline.dates`。最初の購入日）以降で更新。履歴に無い期間は約定単価も参考に初期値を決める
-5. 全資産の最高値比・Tier・基準日比・平均取得単価比を計算。`alert: true` の資産が**通知済みより深いTier**に到達したら `notify_tier_reached()` でLINE通知し、`data/triggered.json`（`{資産ID: {"tier","date"}}`）に記録。下落率が「通知済みTierのしきい値 × `alert.rearm_ratio`（0.5）」より浅くなったら通知済みTierを下げる（再武装。しきい値付近の往復で通知が数倍に増えるのを防ぐ）
-6. 全保有資産の日次サマリー（最高値比・平均取得単価比のみ）を `notify_daily_summary()` でLINE通知
+5. 全資産の最高値比・前日比・Tier・平均取得単価比を計算。`alert: true` の資産が**通知済みより深いTier**に到達したら `notify_tier_reached()` でLINE通知し、`data/triggered.json`（`{資産ID: {"tier","date"}}`）に記録。下落率が「通知済みTierのしきい値 × `alert.rearm_ratio`（0.5）」より浅くなったら通知済みTierを下げる（再武装。しきい値付近の往復で通知が数倍に増えるのを防ぐ）
+6. 全保有資産の日次サマリー（「最高比」「平均比」のみ。プラス緑・マイナス赤のFlexメッセージ。失敗時はテキストで再送）を `notify_daily_summary()` でLINE通知
 7. `data/history.csv`（新銘柄の列は自動追加）/ `data/peak.json` / `data/triggered.json` を保存（`market.json`・`positions.json`・`positions_history.csv`はそれぞれの取得ステップで保存）
 8. `generate_dashboard.py`: `public/index.html` を生成（Chart.jsはCDN読み込み）。構成は ルールと見方／運用手順／投資意思決定サマリー／銘柄毎の詳細／基準価額の推移とTier閾値／市場心理／資金投入管理状況／長期ポートフォリオ
 9. GitHub Actions が `history.csv`/`peak.json`/`triggered.json`/`market.json`/`positions.json`/`positions_history.csv` と `public/index.html`、更新された `monitor.yml` をコミット・プッシュし、GitHub Pages にデプロイ（`purchase_history.json`・`funding_status.json`は運用者が約定履歴の取り込み時にコミットするため対象外）

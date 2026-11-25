@@ -41,6 +41,7 @@ class TierStatusTest(unittest.TestCase):
         self.assertEqual(_tier_status({**base, "tier": 3}), ("Tier3 到達", "tier-hit tier-3"))
         self.assertEqual(_tier_status({**base, "thresholds": []}), ("Tier未設定", "tier-none"))
         self.assertEqual(_tier_status({**base, "drawdown": None}), ("取得失敗", "tier-none"))
+        self.assertEqual(_tier_status({**base, "drawdown": None, "stale": True}), ("判定保留", "tier-none"))
 
     def test_tier_colors_are_purple_levels_distinct_from_plus_minus(self):
         css = (Path(__file__).parent.parent / "scripts" / "generate_dashboard.py").read_text(encoding="utf-8")
@@ -96,9 +97,9 @@ class AlertBannerTest(unittest.TestCase):
         results = sample_results(stale_ids=("nvda",))
         results[0]["price"] = None
         html = _build_alert_banner(results)
-        self.assertIn("取得失敗・前回値", html)
-        self.assertIn("エヌビディア", html)
-        self.assertIn(results[0]["short_name"], html)
+        self.assertIn("取得失敗: " + results[0]["short_name"], html)
+        self.assertIn("基準日が古いためTier判定を保留", html)
+        self.assertIn("エヌビディア（基準日11/25）", html)
 
 
 class CompactLayoutTest(unittest.TestCase):

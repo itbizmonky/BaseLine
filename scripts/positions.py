@@ -14,7 +14,8 @@ judge.py（Tier判定）・fetch_nav.py（投資信託の基準価額取得）�
 import csv
 import json
 import logging
-from datetime import datetime, timezone
+import time
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -67,17 +68,59 @@ def _fetch_yahoo_chart(symbol: str, range_: str) -> dict | None:
     return None
 
 
-def fetch_us_stock_price(ticker: str) -> float | None:
-    """米国株の直近の終値（USD）を取得する。日本時間の朝に実行すると前営業日（米国）の終値になる。"""
+def _local_date(epoch: float, gmtoffset: int) -> date:
+    """取引所のローカル日付（epoch秒＋UTCからのオフセット秒）。"""
+    return (datetime.fromtimestamp(0, timezone.utc) + timedelta(seconds=epoch + gmtoffset)).date()
+
+
+def parse_us_stock_quote(chart: dict, now: float | None = None) -> dict | None:
+    """
+    Yahoo Financeのチャート結果から、確定した直近の終値と取引日を取り出す。
+    通常取引時間中（currentTradingPeriod.regular の開始〜終了の間）の regularMarketPrice は途中の価格で、
+    終値ではないため使わず、日次の配列にある最後の確定済みの日（取引所の今日より前）の終値を返す。
+    Returns: {"value": float, "as_of": date | None}。取れなければ None
+    """
+    meta = chart.get("meta") or {}
+    offset = int(meta.get("gmtoffset") or 0)
+    now = time.time() if now is None else now
+    regular = ((meta.get("currentTradingPeriod") or {}).get("regular")) or {}
+    start, end = regular.get("start"), regular.get("end")
+    market_open = start is not None and end is not None and start <= now < end
+
+    if not market_open:
+        price = meta.get("regularMarketPrice")
+        if price is None:
+            logger.warning("regularMarketPrice がありません")
+            return None
+        traded = meta.get("regularMarketTime")
+        return {"value": float(price), "as_of": _local_date(traded, offset) if traded else None}
+
+    today_local = _local_date(now, offset)
+    stamps = chart.get("timestamp") or []
+    closes = ((chart.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+    for ts, close in reversed(list(zip(stamps, closes))):
+        if close is not None and _local_date(ts, offset) < today_local:
+            return {"value": float(close), "as_of": _local_date(ts, offset)}
+    return None
+
+
+def fetch_us_stock_quote(ticker: str, now: float | None = None) -> dict | None:
+    """米国株の直近の確定した終値（USD）と取引日。取得失敗は None。日本時間の朝に実行すると前営業日（米国）の終値になる。"""
     chart = _fetch_yahoo_chart(ticker, "5d")
     if chart is None:
         return None
-    price = (chart.get("meta") or {}).get("regularMarketPrice")
-    if price is None:
-        logger.warning(f"{ticker}: regularMarketPrice がありません")
+    quote = parse_us_stock_quote(chart, now)
+    if quote is None:
+        logger.warning(f"{ticker}: 確定した終値を取得できませんでした")
         return None
-    logger.info(f"{ticker}: {float(price):.2f} USD (Yahoo Finance)")
-    return float(price)
+    logger.info(f"{ticker}: {quote['value']:.2f} USD (Yahoo Finance・取引日 {quote['as_of'] or '不明'})")
+    return quote
+
+
+def fetch_us_stock_price(ticker: str) -> float | None:
+    """米国株の直近の確定した終値（USD）だけを返す。取引日が必要な場合は fetch_us_stock_quote()。"""
+    quote = fetch_us_stock_quote(ticker)
+    return quote["value"] if quote else None
 
 
 def fetch_daily_closes(symbol: str, range_: str = "6mo") -> list[tuple[str, float]]:
@@ -95,13 +138,13 @@ def fetch_daily_closes(symbol: str, range_: str = "6mo") -> list[tuple[str, floa
     return out
 
 
-def fetch_all_positions(settings: dict | None = None) -> dict:
+def fetch_all_position_quotes(settings: dict | None = None) -> dict:
     """
-    settings.json の positions.items で定義された全ポジション（米国株）の株価を取得する。
+    settings.json の positions.items で定義された全ポジション（米国株）の終値と取引日を取得する。
     取得失敗した銘柄は None になる（呼び出し側で前回値にフォールバックする）。
 
     Returns:
-        {position_id: float|None, ...}
+        {position_id: {"value": float, "as_of": date | None} | None, ...}
     """
     settings = settings or load_settings()
     items = settings.get("positions", {}).get("items", [])
@@ -110,11 +153,16 @@ def fetch_all_positions(settings: dict | None = None) -> dict:
         pid = item["id"]
         source = item.get("source")
         if source == "yahoo_us_stock":
-            results[pid] = fetch_us_stock_price(item["ticker"])
+            results[pid] = fetch_us_stock_quote(item["ticker"])
         else:
             logger.warning(f"{pid}: 未知の取得元 source={source!r}")
             results[pid] = None
     return results
+
+
+def fetch_all_positions(settings: dict | None = None) -> dict:
+    """全ポジションの終値だけを返す（{position_id: float | None}）。取引日が必要な場合は fetch_all_position_quotes()。"""
+    return {pid: (q["value"] if q else None) for pid, q in fetch_all_position_quotes(settings).items()}
 
 
 # ------------------------------------------------------------------
@@ -136,14 +184,16 @@ def save_positions(positions: dict) -> None:
         json.dump(positions, f, ensure_ascii=False, indent=2)
 
 
-def update_positions(positions: dict, fetched: dict, today_str: str) -> dict:
+def update_positions(positions: dict, fetched: dict, today_str: str, as_of: dict | None = None) -> dict:
     """
     取得結果でpositions.jsonの内容を更新する（破壊的変更）。
-    取得に失敗した銘柄（None）は更新せず、前回値と前回の取得日を維持する。
+    取得に失敗した銘柄（None）は更新せず、前回値と前回の基準日を維持する。
+    date は価格の基準日（取引日。不明なら実行日）、fetched は取得した実行日。
     """
     for pid, value in fetched.items():
         if value is not None:
-            positions[pid] = {"value": value, "date": today_str}
+            traded = (as_of or {}).get(pid)
+            positions[pid] = {"value": value, "date": traded.isoformat() if traded else today_str, "fetched": today_str}
     return positions
 
 
@@ -228,9 +278,9 @@ if __name__ == "__main__":
 
     logger.info("=== 米国株 取得テスト ===")
     settings = load_settings()
-    fetched = fetch_all_positions(settings)
+    fetched = fetch_all_position_quotes(settings)
 
     print("\n【取得結果】")
     for item in settings.get("positions", {}).get("items", []):
-        val = fetched.get(item["id"])
-        print(f"  {item['short_name']}: " + (f"{val:,.2f} USD" if val is not None else "取得失敗"))
+        q = fetched.get(item["id"])
+        print(f"  {item['short_name']}: " + (f"{q['value']:,.2f} USD  取引日 {q['as_of'] or '不明'}" if q else "取得失敗"))

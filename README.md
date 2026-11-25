@@ -88,9 +88,10 @@ Tierは最高値比の「下落の目安」（購入の指示ではありませ�
 ├── scripts/
 │   ├── monitor.py              # メイン実行スクリプト
 │   ├── assets.py               # 全保有資産（funds＋米国株）を統一して扱う
-│   ├── fetch_nav.py            # 投資信託の基準価額取得（日経電子版）
+│   ├── fetch_nav.py            # 投資信託の基準価額・基準日の取得（日経電子版）
+│   ├── freshness.py            # 価格の鮮度判定（基準日の遅れ・stale判定）
 │   ├── market_data.py          # 市場心理指標（VIX/米10年金利/USD-JPY）取得・判定
-│   ├── positions.py            # 米国株の株価取得（Yahoo Finance）・履歴保存
+│   ├── positions.py            # 米国株の終値・取引日の取得（Yahoo Finance）・履歴保存
 │   ├── purchase_history.py     # 購入実績の読み込み・平均取得単価（円・USD）の算出
 │   ├── portfolio.py            # 長期ポートフォリオ（評価額・コア／サテライト比率）
 │   ├── funding.py              # 資金管理（原資の月数・NISA枠の使用率）
@@ -249,6 +250,7 @@ python scripts/update_purchases.py 約定履歴_投信.csv 約定履歴_米国�
 
 - **資産の追加・停止**: 投資信託は`funds`、米国株は`positions.items`に1エントリ追加（`id`・`name`・`short_name`・`role`・`alert`・`tiers`など）。投資信託は`fund_code`（日経電子版）、米国株は`ticker`（Yahoo Finance）が必要。`history.csv`・`positions_history.csv`は列が自動で増える。新規買付を止める場合も、保有が残る限りエントリは残します
 - **Tier閾値**: 資産ごとの`tiers`（最大3つ。未設定は`[]`）。LINEアラートの対象は`alert: true`の資産だけ。再通知の解除条件は`alert.rearm_ratio`（通知済みTierのしきい値×この値より下落率が浅くなったら解除）
+- **価格の鮮度**: 価格の基準日（投信は日経ページの基準価格の日付、米国株は取引日）が直近の平日より`freshness.max_lag_weekdays`（既定3平日）を超えて古い場合は「判定保留」とし、最高値の更新・Tier判定・履歴追記をしません（LINEに取得エラーとして基準日つきで通知）。祝日・年末年始・GWの遅れは許容します。米国株は取引時間中の途中の価格を使わず、確定済みの終値を使います
 - **最高値・基準日の起点**: `peak_start_date`（既定）と`baseline.dates`（資産ごと。最初に購入した日）、基準日の価格は`baseline.prices`
 - **積立設定**: `monthly_schedule.cash`（現金積立）・`monthly_schedule.card`（クレカ積立）の`phases`に、`from`（発注日）つきの構成（`fund_id`・`amount`・`frame`）を追加。ダッシュボードの運用手順が当日に有効な構成と次の構成の予告を表示し、約定履歴の取り込みも`card`の設定でカード積立を判定します。**積立設定を変更したらここも更新してください**
 - **NISA枠**: `nisa_limits`（成長240万円／つみたて120万円）

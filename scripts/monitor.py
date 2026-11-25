@@ -21,7 +21,7 @@ GitHub Actions から毎日実行されるスクリプト。
 import argparse
 import logging
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 # 日本標準時（UTC+9固定オフセット。tzdata依存を避けるため固定オフセットを使用）
@@ -31,13 +31,14 @@ JST = timezone(timedelta(hours=9))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from assets import KIND_FUND, all_assets, stock_assets
-from fetch_nav import fetch_all_nav, load_settings
+from fetch_nav import fetch_all_nav_quotes, load_settings
+from freshness import DEFAULT_MAX_LAG_WEEKDAYS, STATUS_STALE, classify_prices, short_date, to_date, usable_values
 from market_data import (
     fetch_all_market_data, load_market, save_market, update_market,
     judge_vix_level, calc_direction,
 )
 from positions import (
-    fetch_all_positions, load_positions, save_positions, update_positions,
+    fetch_all_position_quotes, load_positions, save_positions, update_positions,
     load_positions_history, append_positions_history,
 )
 from purchase_history import calc_gain_vs_average, cost_records, load_purchase_history, purchase_markers
@@ -159,33 +160,46 @@ def fetch_market(settings: dict, today_str: str) -> dict:
     return market_display
 
 
-def fetch_stocks(settings: dict, today_str: str, usdjpy: float | None) -> tuple[dict, dict]:
+def fetch_stocks(settings: dict, today_str: str, usdjpy: float | None, max_lag: int = DEFAULT_MAX_LAG_WEEKDAYS) -> tuple[dict, dict]:
     """
-    米国個別株の株価を取得し、(取得できた株価 {資産ID: USD}, 表示用 quotes) を返す。
-    取得に失敗した株は前回値（stale=True）を quotes に入れる。失敗しても処理は止めない。
-    quotes: {資産ID: {"value": float, "date": str, "stale": bool}}
+    米国個別株の株価と取引日を取得し、(判定に使える株価 {資産ID: USD}, 表示用 quotes) を返す。
+    取得に失敗した株は前回値（forced_stale）、取引日が古い株は stale として quotes に入れ、判定に使える株価
+    （最高値更新・Tier判定・履歴追記の入力）には含めない。失敗しても処理は止めない。
+    quotes: {資産ID: {"value": float, "date": 基準日(YYYY-MM-DD), "stale": bool, "status": "fresh"|"stale"|"unknown"}}
     """
-    fresh, quotes = {}, {}
+    usable, quotes = {}, {}
     stocks = stock_assets(settings)
     if not stocks:
-        return fresh, quotes
+        return usable, quotes
     try:
+        today = date.fromisoformat(today_str)
         old_positions = load_positions()
-        fetched = fetch_all_positions(settings)
+        fetched_q = fetch_all_position_quotes(settings)
+        incoming = {}
         for s in stocks:
             sid = s["id"]
-            if fetched.get(sid) is not None:
-                fresh[sid] = fetched[sid]
-                quotes[sid] = {"value": fetched[sid], "date": today_str, "stale": False}
+            q = fetched_q.get(sid)
+            if q is not None:
+                incoming[sid] = {"value": q["value"], "as_of": q["as_of"]}
             elif sid in old_positions:
-                quotes[sid] = {"value": old_positions[sid]["value"], "date": old_positions[sid]["date"], "stale": True}
-        save_positions(update_positions(old_positions, fetched, today_str))
-        append_positions_history(today_str, {**fetched, "usdjpy": usdjpy}, [s["id"] for s in stocks] + ["usdjpy"])
-        logger.info(f"米国株: {fetched}")
+                incoming[sid] = {"value": old_positions[sid]["value"], "as_of": old_positions[sid]["date"], "forced_stale": True}
+        info = classify_prices(incoming, today, max_lag)
+        usable = usable_values(info)
+        for sid, i in info.items():
+            quotes[sid] = {
+                "value": i["value"],
+                "date": i["as_of"].isoformat() if i["as_of"] else today_str,
+                "stale": i["status"] == STATUS_STALE,
+                "status": i["status"],
+            }
+        fetched = {sid: q["value"] for sid, q in fetched_q.items() if q is not None}
+        save_positions(update_positions(old_positions, fetched, today_str, {sid: q["as_of"] for sid, q in fetched_q.items() if q}))
+        append_positions_history(today_str, {**usable, "usdjpy": usdjpy}, [s["id"] for s in stocks] + ["usdjpy"])
+        logger.info(f"米国株: {fetched}（判定に使える: {usable}）")
     except Exception as e:
         # 米国株の取得失敗で投資信託のTier判定・通知が止まらないよう、例外を握りつぶす
         logger.warning(f"米国株の取得中にエラーが発生しましたが処理を続行します: {e}")
-    return fresh, quotes
+    return usable, quotes
 
 
 def main(dry_run: bool = False) -> None:
@@ -217,27 +231,38 @@ def main(dry_run: bool = False) -> None:
     retry_count = settings["notification"]["retry_count"]
     retry_interval = settings["notification"]["retry_interval_sec"]
     rearm_ratio = settings.get("alert", {}).get("rearm_ratio", DEFAULT_REARM_RATIO)
+    max_lag = settings.get("freshness", {}).get("max_lag_weekdays", DEFAULT_MAX_LAG_WEEKDAYS)
 
     # ----------------------------------------------------------
     # 2. 基準価額取得（投資信託）・市場心理・米国株（参考情報・米国株は取得失敗しても止めない）
     # ----------------------------------------------------------
     logger.info("基準価額を取得中...")
-    navs = fetch_all_nav(
+    nav_quotes = fetch_all_nav_quotes(
         retry_count=retry_count,
         retry_interval=retry_interval if not dry_run else 1,
     )
+    navs = {fid: (q["value"] if q else None) for fid, q in nav_quotes.items()}
+    # 基準日が古い（stale）NAVは、最高値更新・Tier判定・履歴追記に使わない
+    nav_info = classify_prices(nav_quotes, today, max_lag)
+    usable_navs = usable_values(nav_info)
+    for fid, i in nav_info.items():
+        if i and i["status"] == "unknown":
+            logger.warning(f"{fid}: 基準日を取得できませんでした（価格は使用します）")
     market_display = fetch_market(settings, today_str)
-    fresh_stocks, quotes = fetch_stocks(settings, today_str, market_display.get("usdjpy", {}).get("value"))
+    fresh_stocks, quotes = fetch_stocks(settings, today_str, market_display.get("usdjpy", {}).get("value"), max_lag)
 
     # ----------------------------------------------------------
     # 3. 取得失敗チェック
     # ----------------------------------------------------------
+    names = {a["id"]: a["short_name"] for a in assets}
     failed_ids = [fid for fid, nav in navs.items() if nav is None]
-    failed_ids += [s["id"] for s in stock_assets(settings) if s["id"] not in fresh_stocks]
-    if failed_ids:
-        names = {a["id"]: a["short_name"] for a in assets}
-        failed_names = [names.get(fid, fid) for fid in failed_ids]
-        logger.warning(f"取得失敗: {failed_names}")
+    failed_ids += [s["id"] for s in stock_assets(settings) if s["id"] not in quotes]
+    stale_dates = {fid: i["as_of"] for fid, i in nav_info.items() if i and i["status"] == STATUS_STALE}
+    stale_dates.update({sid: to_date(q["date"]) for sid, q in quotes.items() if q["stale"]})
+    failed_names = [names.get(fid, fid) for fid in failed_ids]
+    failed_names += [f"{names.get(fid, fid)}（基準日{short_date(d)}・判定保留）" for fid, d in stale_dates.items()]
+    if failed_names:
+        logger.warning(f"取得失敗・基準日が古い: {failed_names}")
         if not dry_run and notifications_enabled:
             notify_fetch_error(failed_names, today_str, dashboard_url)
 
@@ -259,7 +284,7 @@ def main(dry_run: bool = False) -> None:
         aid: [(m["date"], m["price"]) for m in purchase_markers(records)]
         for aid, records in purchases.items()
     }
-    peak, _ = update_peak(peak, {**navs, **fresh_stocks}, today_str, peak_start,
+    peak, _ = update_peak(peak, {**usable_navs, **fresh_stocks}, today_str, peak_start,
                           history + positions_history, baseline, extra_points)
 
     # ----------------------------------------------------------
@@ -273,7 +298,9 @@ def main(dry_run: bool = False) -> None:
         aid = asset["id"]
         if asset["kind"] == KIND_FUND:
             price = navs.get(aid)
-            price_date, stale = today_str, False
+            info = nav_info.get(aid)
+            price_date = info["as_of"].isoformat() if info and info["as_of"] else today_str
+            stale = bool(info and info["status"] == STATUS_STALE)
             trend_rows = history
         else:
             quote = quotes.get(aid) or {}
@@ -299,14 +326,15 @@ def main(dry_run: bool = False) -> None:
             "stale": stale,
             "peak_value": peak_val,
             "peak_date": peak_info.get("date"),
-            "day_change": calc_day_change(trend_rows, aid, price, today_str),
+            "day_change": None if stale else calc_day_change(trend_rows, aid, price, today_str),
             "drawdown": None,
             "tier": 0,
             "avg_cost_ratio": None,
             "trend_5d": calc_trend(trend_rows, aid, days=5),
             "trend_20d": calc_trend(trend_rows, aid, days=20),
         }
-        if price is None or peak_val is None:
+        if price is None or peak_val is None or stale:
+            # 取得失敗・基準日が古い価格は、下落率・Tier判定・通知状態の更新をしない（判定保留）
             results.append(result)
             continue
 
@@ -353,7 +381,7 @@ def main(dry_run: bool = False) -> None:
     save_triggered(triggered)
     logger.info("triggered.json を保存しました")
 
-    append_history(today_str, navs)
+    append_history(today_str, {fid: usable_navs.get(fid) for fid in navs})
 
     # ----------------------------------------------------------
     # 8. HTMLダッシュボード生成

@@ -7,17 +7,21 @@ fetch_nav.py
   日経新聞 投資信託情報ページ（https://www.nikkei.com/nkd/fund/）から取得する。
   失敗時はリトライ（settings.json の retry_count / retry_interval_sec に従う）
 
-戻り値: dict { "fang": float, "sox": float, "sp500": float, "orkan": float }
-取得失敗したファンドは None になる
+戻り値: fetch_all_nav_quotes() は { 資産ID: {"value": 基準価額, "as_of": 基準日(date|None)} | None }。
+fetch_all_nav() は値だけの { 資産ID: float | None } を返す。取得失敗したファンドは None になる
+基準日は、ページの「基準価格(11/24)： 42,418 円」の日付（freshness.parse_nikkei_asof）
 """
 
 import json
 import time
 import logging
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
+
+from freshness import parse_nikkei_asof
 
 # ロガー設定
 logging.basicConfig(
@@ -41,42 +45,54 @@ HEADERS = {
 }
 
 REQUEST_TIMEOUT = 15  # 秒
+JST = timezone(timedelta(hours=9))
 
 def load_settings() -> dict:
     """settings.json を読み込む"""
     with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def _fetch_nikkei_nav(fund_code: str, short_name: str) -> float | None:
+def _extract_nav(soup, today: date) -> tuple[float, date | None] | None:
+    """ページ（BeautifulSoup）から (基準価額, 基準日) を取り出す。価格要素がなければ None。基準日が読めなければ None を返す。"""
+    el = soup.select_one(".m-stockPriceElm_value")
+    if not el:
+        return None
+    value = float(el.text.replace(",", "").replace("円", "").strip())
+    as_of = None
+    for parent in el.parents:   # 価格要素を含む最小の塊（dl）の文字列から基準日を探す
+        as_of = parse_nikkei_asof(parent.get_text(" ", strip=True), today)
+        if as_of is not None or parent.name in ("body", "html"):
+            break
+    return value, as_of
+
+
+def _fetch_nikkei_nav(fund_code: str, short_name: str) -> dict | None:
     """
-    日経新聞の投資信託ページから基準価額を取得する
+    日経新聞の投資信託ページから基準価額と基準日を取得する。
+    Returns: {"value": float, "as_of": date | None}。取得失敗は None
     """
     url = f"https://www.nikkei.com/nkd/fund/?fcode={fund_code}"
     try:
         resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.content, "lxml")
-        
-        el = soup.select_one(".m-stockPriceElm_value")
-        if el:
-            text = el.text.replace(",", "").replace("円", "").strip()
-            val = float(text)
-            logger.info(f"{short_name}: {val:,.0f}円 (日経)")
-            return val
-        else:
+        extracted = _extract_nav(soup, datetime.now(JST).date())
+        if extracted is None:
             logger.warning(f"{short_name}: 価格要素 (.m-stockPriceElm_value) が見つかりませんでした")
             return None
+        value, as_of = extracted
+        logger.info(f"{short_name}: {value:,.0f}円 (日経・基準日 {as_of or '不明'})")
+        return {"value": value, "as_of": as_of}
     except Exception as e:
         logger.warning(f"{short_name} 取得失敗: {e}")
         return None
 
-def fetch_all_nav(retry_count: int = 3, retry_interval: int = 30) -> dict:
+def fetch_all_nav_quotes(retry_count: int = 3, retry_interval: int = 30) -> dict:
     """
-    4銘柄すべての基準価額を取得する。
-    取得失敗したファンドは None になる。
+    全ファンドの基準価額と基準日を取得する。取得失敗したファンドは None になる。
 
     Returns:
-        {"fang": float|None, "sox": float|None, "sp500": float|None, "orkan": float|None}
+        {資産ID: {"value": float, "as_of": date | None} | None}
     """
     settings = load_settings()
     results = {}
@@ -86,11 +102,11 @@ def fetch_all_nav(retry_count: int = 3, retry_interval: int = 30) -> dict:
         fund_code = fund["fund_code"]
         short_name = fund["short_name"]
         
-        nav = None
+        quote = None
         for attempt in range(1, retry_count + 1):
             try:
-                nav = _fetch_nikkei_nav(fund_code, short_name)
-                if nav is not None:
+                quote = _fetch_nikkei_nav(fund_code, short_name)
+                if quote is not None:
                     break
             except Exception as e:
                 logger.warning(f"{short_name} 試行 {attempt}/{retry_count} 例外: {e}")
@@ -99,11 +115,16 @@ def fetch_all_nav(retry_count: int = 3, retry_interval: int = 30) -> dict:
                 logger.info(f"{short_name} {retry_interval}秒後にリトライします...")
                 time.sleep(retry_interval)
 
-        if nav is None:
+        if quote is None:
             logger.error(f"{short_name}: 全{retry_count}回の取得に失敗しました")
-        results[fid] = nav
+        results[fid] = quote
 
     return results
+
+
+def fetch_all_nav(retry_count: int = 3, retry_interval: int = 30) -> dict:
+    """全ファンドの基準価額だけを返す（{資産ID: float | None}）。基準日が必要な場合は fetch_all_nav_quotes()。"""
+    return {fid: (q["value"] if q else None) for fid, q in fetch_all_nav_quotes(retry_count, retry_interval).items()}
 
 if __name__ == "__main__":
     settings = load_settings()
@@ -111,11 +132,11 @@ if __name__ == "__main__":
     interval = settings["notification"]["retry_interval_sec"]
 
     logger.info("=== 基準価額取得テスト ===")
-    navs = fetch_all_nav(retry_count=1, retry_interval=1)
+    quotes = fetch_all_nav_quotes(retry_count=1, retry_interval=1)
 
     print("\n【取得結果】")
-    for fund_id, nav in navs.items():
-        if nav is not None:
-            print(f"  {fund_id:8s}: {nav:>10,.0f} 円")
+    for fund_id, q in quotes.items():
+        if q is not None:
+            print(f"  {fund_id:14s}: {q['value']:>10,.0f} 円  基準日 {q['as_of'] or '不明'}")
         else:
-            print(f"  {fund_id:8s}: 取得失敗")
+            print(f"  {fund_id:14s}: 取得失敗")

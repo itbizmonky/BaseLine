@@ -33,11 +33,11 @@
 `scripts/monitor.py` がエントリポイント。以下の順で実行される。
 
 1. `config/settings.json` 読み込み + `sync_github_workflow()` で settings.json の `schedule` を `.github/workflows/monitor.yml` の cron 式に自動反映（JST→UTC変換）
-2. `fetch_nav.py`: `funds`全銘柄について日経新聞の投信ページ（`https://www.nikkei.com/nkd/fund/?fcode=<fund_code>`）を BeautifulSoup でスクレイピングし基準価額を取得。失敗時は `retry_count` 回まで `retry_interval_sec` 秒間隔でリトライ
-2.5. `market_data.py`（市場心理指標）・`positions.py`（米国株TSLA・NVDAの株価。Yahoo Finance チャートAPI）を取得。失敗しても処理を継続（米国株は前回値を維持）
-3. 取得失敗の資産があれば `notify_fetch_error()` でLINE通知（F-11）
-4. `judge.py`: `data/peak.json`（設定来高値）を資産ごとの起点日（`baseline.dates`。最初の購入日）以降で更新。履歴に無い期間は約定単価も参考に初期値を決める
-5. 全資産の最高値比・前日比・Tier・平均取得単価比を計算。`alert: true` の資産について、`judge.update_alert_state()` が**Tierごとに独立して**「武装中／通知済み」を持つ（Tier1〜3は互いに影響しない）。しきい値に新たに到達した武装中のTierは全て通知済みとして`data/triggered.json`（`{資産ID: {"tier","date","notified":{Tier番号: 通知日}}}`。`notified`が正本）に記録し、**最も深いTierだけ**を `notify_tier_reached()` でLINE通知する（同時に複数越えても1通）。通知済みTierは、下落率が「そのTierのしきい値 × `alert.rearm_ratio`（0.5）」より浅くなったときに、そのTierだけ再武装する（しきい値付近の往復で通知が数倍に増えるのを防ぐ。校正の前提と同じ定義）
+2. `fetch_nav.py`: `funds`全銘柄について日経新聞の投信ページ（`https://www.nikkei.com/nkd/fund/?fcode=<fund_code>`）を BeautifulSoup でスクレイピングし基準価額を取得。失敗時は `retry_count` 回まで `retry_interval_sec` 秒間隔でリトライ。ページの「基準価格(11/24)」から**基準日（as_of）**も読む
+2.5. `market_data.py`（市場心理指標）・`positions.py`（米国株TSLA・NVDAの株価。Yahoo Finance チャートAPI）を取得。失敗しても処理を継続（米国株は前回値を維持）。米国株は取引日（as_of）も取得し、**取引時間中の途中の価格は使わず確定済みの終値**を使う
+3. 価格の鮮度判定（`freshness.py`）: 基準日が直近の平日より `freshness.max_lag_weekdays`（既定3平日）を超えて古い価格は **stale**（祝日・年末年始・GWの遅れは許容）。基準日が取れない場合は価格を使う（警告ログ）。取得失敗または stale の資産があれば `notify_fetch_error()` でLINE通知（F-11。staleは基準日つき）
+4. `judge.py`: `data/peak.json`（設定来高値）を、**stale でない価格だけ**で、資産ごとの起点日（`baseline.dates`。最初の購入日）以降で更新。履歴に無い期間は約定単価も参考に初期値を決める
+5. 全資産の最高値比・前日比・Tier・平均取得単価比を計算（**stale・取得失敗の資産は下落率・Tier判定・通知状態の更新をせず「判定保留」**）。`alert: true` の資産について、`judge.update_alert_state()` が**Tierごとに独立して**「武装中／通知済み」を持つ（Tier1〜3は互いに影響しない）。しきい値に新たに到達した武装中のTierは全て通知済みとして`data/triggered.json`（`{資産ID: {"tier","date","notified":{Tier番号: 通知日}}}`。`notified`が正本）に記録し、**最も深いTierだけ**を `notify_tier_reached()` でLINE通知する（同時に複数越えても1通）。通知済みTierは、下落率が「そのTierのしきい値 × `alert.rearm_ratio`（0.5）」より浅くなったときに、そのTierだけ再武装する（しきい値付近の往復で通知が数倍に増えるのを防ぐ。校正の前提と同じ定義）
 6. 全保有資産の日次サマリー（「最高比」「平均比」のみ。プラス緑・マイナス赤のFlexメッセージ。失敗時はテキストで再送）を `notify_daily_summary()` でLINE通知
 7. `data/history.csv`（新銘柄の列は自動追加）/ `data/peak.json` / `data/triggered.json` を保存（`market.json`・`positions.json`・`positions_history.csv`はそれぞれの取得ステップで保存）
 8. `generate_dashboard.py`: `public/index.html` を生成（Chart.jsはCDN読み込み）。構成は 注意バナー（Tier到達中・取得失敗）／固定ナビ／ルールと見方／運用手順／投資意思決定サマリー／銘柄毎の詳細（折りたたみ）／基準価額の推移とTier閾値／市場心理／資金投入管理状況／長期ポートフォリオ（表はスマホでも1銘柄1行）
@@ -64,6 +64,7 @@ scripts/funding.py       # 資金管理（原資の月数・NISA枠使用率）�
 scripts/import_sbi_history.py  # SBI証券の約定履歴CSV（投信・米国株）をpurchase_history.jsonへ取り込む（手動実行。CSVはコミットしない）
 scripts/update_purchases.py    # 取り込み→資金管理の更新→purchase_history.jsonとfunding_status.jsonのコミット→pull --rebase→プッシュを確認つきで1コマンド実行
 scripts/migrate_purchase_history.py / migrate_data_layout.py  # 一度きりの移行（dry-run既定・--applyは承認後）
+scripts/freshness.py     # 価格の鮮度判定（基準日の遅れ・stale判定・日経の基準日の解析。純粋関数）
 scripts/judge.py         # 下落率/Tier/通知済みTier/最高値更新/トレンド計算ロジック
 scripts/notify.py        # LINE Messaging API 通知（メッセージ生成 + 送信）
 scripts/generate_dashboard.py  # public/index.html 生成
@@ -104,6 +105,7 @@ GitHub Actions 上では `workflow_dispatch` から `dry_run: true` で手動テ
 ## 重要な注意点
 
 - **スクレイピング・外部APIの脆弱性**: `fetch_nav.py` は日経電子版のCSSセレクタ（`.m-stockPriceElm_value`）に依存している。サイト構造変更で取得失敗する可能性があるため、変更時は要件定義書の「残課題」も参照。米国株は Yahoo Finance（米国）のチャートAPI（`query1/query2.finance.yahoo.com/v8/finance/chart/<ticker>`）から取得する（Yahoo!ファイナンスJPのHTMLは2026-10以降、価格をJSで描画するため取得できない）。GitHub Actions のIPから取得できるかは本番で要確認（失敗時は前回値で継続しLINEに取得エラーを通知）。要件定義書ではYahoo!ファイナンスを想定していたが、投資信託は日経電子版に変更されている点に注意。
+- **価格の鮮度（基準日）**: 価格には基準日（投信＝日経の基準価格の日付、米国株＝取引日）があり、`history.csv`・`peak.json`の日付（実行日）とは別。stale（基準日が古い・取得失敗の前回値）の資産は、最高値更新・Tier判定・`triggered.json`の更新・履歴への追記をしない（ダッシュボードは「判定保留」）。`positions.json`の`date`は取引日、`fetched`は取得した実行日。日経ページに基準日の表記（`基準価格(MM/DD)`）が無くなっても価格は使う（警告ログ）。日付の遅れの許容は`settings.json`の`freshness.max_lag_weekdays`。
 - **シークレット**: `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_USER_ID` はGitHub Secretsで管理。コードやconfigに直書きしない。
 - **cronの自動同期**: `monitor.yml` の cron 式を直接編集しても、次回 `monitor.py` 実行時に `settings.json` の `schedule` の値で上書きされる。スケジュール変更は `settings.json` 側で行うこと。
 - **triggered.json は重複通知防止のための唯一のstate**。誤って削除するとTier到達通知が再送されるため、消す場合は影響を理解した上で行う。`notified`の無い旧形式（`{"tier","date"}`）は自動変換せず、`update_alert_state()` が初回に現在の下落率から初期化する（旧tier以下で、まだ再武装されていない＝下落率がしきい値×0.5以上のTierだけを通知済みにし、`migrated`に効力日を残す。2026-11-25に適用）。さらに古い形式（Tier別レコードのリスト）は `load_triggered()` が旧形式へ移行する。

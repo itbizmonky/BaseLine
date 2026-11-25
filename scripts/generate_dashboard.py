@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from assets import KIND_FUND, all_assets
+from freshness import short_date
 from funding import load_status
 from groups import build_groups
 from judge import format_drawdown
@@ -220,9 +221,9 @@ def _build_chart_data(
 # ------------------------------------------------------------------
 
 def _tier_status(r: dict) -> tuple[str, str]:
-    """Tier到達状況の（表示文言, CSSクラス）。しきい値が未設定・取得失敗の場合はそれを示す。"""
+    """Tier到達状況の（表示文言, CSSクラス）。しきい値が未設定・取得失敗・基準日が古い（判定保留）場合はそれを示す。"""
     if r.get("drawdown") is None:
-        return "取得失敗", "tier-none"
+        return ("判定保留" if r.get("stale") else "取得失敗"), "tier-none"
     if not r.get("thresholds"):
         return "Tier未設定", "tier-none"
     if r["tier"] > 0:
@@ -260,7 +261,7 @@ def _build_summary_table(groups: list[dict]) -> str:
         rows.append(_group_header_row(g, 4))
         for r in g["lines"]:
             tier_text, tier_css = _tier_status(r)
-            stale = '<span class="inactive-tag">（前回値）</span>' if r.get("stale") else ""
+            stale = f'<span class="inactive-tag">（基準日{short_date(r.get("price_date"))}・判定保留）</span>' if r.get("stale") else ""
             tag = f'<span class="inactive-tag">（{r["tag"]}）</span>' if r.get("tag") else ""
             monthly = f'<span class="group-sub">月{r["monthly"]:,}円</span>' if r.get("monthly") else ""
             sub = f'{_role_tag(r["role"])}{tag}{monthly}{stale}'
@@ -284,7 +285,8 @@ def _build_alert_banner(results: list[dict]) -> str:
     ページ最上部の注意バナー。Tierに到達している銘柄（クリックで該当の詳細が開く）と、取得失敗・前回値の資産を1〜2行で示す。
     """
     hit = [r for r in results if r.get("drawdown") is not None and r.get("tier", 0) > 0]
-    bad = [r for r in results if r.get("price") is None or r.get("stale")]
+    failed = [r for r in results if r.get("price") is None and not r.get("stale")]
+    held = [r for r in results if r.get("stale")]
     lines = []
     if hit:
         chips = "・".join(
@@ -293,9 +295,12 @@ def _build_alert_banner(results: list[dict]) -> str:
         lines.append(f'<div class="bn-line bn-hit">⚠ Tier到達中: {chips}</div>')
     else:
         lines.append('<div class="bn-line bn-ok">✅ Tier到達なし</div>')
-    if bad:
-        names = "・".join(r["short_name"] for r in bad)
-        lines.append(f'<div class="bn-line bn-warn">⚠ 取得失敗・前回値: {names}</div>')
+    if failed:
+        names = "・".join(r["short_name"] for r in failed)
+        lines.append(f'<div class="bn-line bn-warn">⚠ 取得失敗: {names}</div>')
+    if held:
+        names = "・".join(f'{r["short_name"]}（基準日{short_date(r.get("price_date"))}）' for r in held)
+        lines.append(f'<div class="bn-line bn-warn">⚠ 基準日が古いためTier判定を保留: {names}</div>')
     return f'<section class="alert-banner" id="alertBanner">{"".join(lines)}</section>'
 
 
@@ -323,7 +328,8 @@ def _build_asset_cards(results: list[dict], settings: dict, purchase_history: di
         tier_text, tier_css = _tier_status(r)
 
         price_str = _fmt_price(r.get("price"), currency)
-        stale_note = f'<div class="metric-sub">※取得失敗のため{r["price_date"]}の値</div>' if r.get("stale") else ""
+        stale_note = (f'<div class="metric-sub">※基準日が古い（または取得失敗）ためTier判定を保留（最終 {short_date(r.get("price_date"))}）</div>'
+                      if r.get("stale") else "")
         peak_str = _fmt_price(r.get("peak_value"), currency) if r.get("peak_value") is not None else "未記録"
         peak_sub = f'{r.get("peak_date") or "-"} 記録（起点 {start}）'
         held = holdings.get(aid)

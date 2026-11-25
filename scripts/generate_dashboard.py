@@ -226,7 +226,7 @@ def _tier_status(r: dict) -> tuple[str, str]:
     if not r.get("thresholds"):
         return "Tier未設定", "tier-none"
     if r["tier"] > 0:
-        return f"Tier{r['tier']} 到達", "tier-hit"
+        return f"Tier{r['tier']} 到達", f"tier-hit tier-{r['tier']}"
     return "未到達", "tier-ok"
 
 
@@ -288,7 +288,7 @@ def _build_alert_banner(results: list[dict]) -> str:
     lines = []
     if hit:
         chips = "・".join(
-            f'<a class="bn-link" href="#asset-{r["asset_id"]}">{r["short_name"]}（Tier{r["tier"]}）</a>' for r in hit
+            f'<a class="bn-link bn-t{r["tier"]}" href="#asset-{r["asset_id"]}">{r["short_name"]}（Tier{r["tier"]}）</a>' for r in hit
         )
         lines.append(f'<div class="bn-line bn-hit">⚠ Tier到達中: {chips}</div>')
     else:
@@ -994,10 +994,13 @@ html, body{{ overflow-x: hidden; }}
 .summary-table th.num{{ text-align: right; }}
 /* 注意バナー */
 .alert-banner{{ background: var(--panel-bg); border: 1px solid rgba(255,255,255,0.04); border-radius: 14px; padding: 12px 16px; font-size: 13px; line-height: 1.7; box-shadow: var(--shadow-out); }}
-.bn-hit{{ color: #fb923c; font-weight: 700; }}
+.bn-hit{{ color: #c4b5fd; font-weight: 700; }}
 .bn-ok{{ color: #4ade80; font-weight: 700; }}
 .bn-warn{{ color: #f87171; font-weight: 700; }}
 .bn-link{{ color: inherit; text-decoration: underline; text-underline-offset: 3px; }}
+.bn-link.bn-t1{{ color: #c4b5fd; }}
+.bn-link.bn-t2{{ color: #a78bfa; }}
+.bn-link.bn-t3{{ color: #d946ef; text-shadow: 0 0 8px rgba(217,70,239,0.45); }}
 /* 固定ナビ */
 .sec-nav{{ display: flex; gap: 6px; overflow-x: auto; max-width: 900px; margin: 10px auto 0; scrollbar-width: none; }}
 .sec-nav::-webkit-scrollbar{{ display: none; }}
@@ -1093,7 +1096,9 @@ html, body{{ overflow-x: hidden; }}
   .metric-value{{ font-size: 14px; }}
   .alert-banner{{ padding: 10px 12px; font-size: 12px; }}
 }}
-.val-tier.tier-hit, .status-badge.tier-hit {{ color: #fb923c; font-weight: 700; }}
+.val-tier.tier-1, .status-badge.tier-1 {{ color: #c4b5fd; font-weight: 700; }}
+.val-tier.tier-2, .status-badge.tier-2 {{ color: #a78bfa; font-weight: 700; }}
+.val-tier.tier-3, .status-badge.tier-3 {{ color: #d946ef; font-weight: 800; text-shadow: 0 0 8px rgba(217,70,239,0.45); }}
 .val-tier.tier-ok, .status-badge.tier-ok {{ color: #94a3b8; }}
 .val-tier.tier-none, .status-badge.tier-none {{ color: #64748b; }}
 </style>

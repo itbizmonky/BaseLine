@@ -5,6 +5,7 @@ try:
 except ImportError:
     import helpers  # noqa: F401  （tests/ を起点に実行したとき）
 
+import colorsys
 import re
 from pathlib import Path
 
@@ -35,16 +36,30 @@ class TierStatusTest(unittest.TestCase):
     def test_states_and_css_classes(self):
         base = {"drawdown": 5.0, "thresholds": [11, 17, 33], "tier": 0}
         self.assertEqual(_tier_status(base), ("未到達", "tier-ok"))
-        self.assertEqual(_tier_status({**base, "tier": 2}), ("Tier2 到達", "tier-hit"))
+        self.assertEqual(_tier_status({**base, "tier": 1}), ("Tier1 到達", "tier-hit tier-1"))
+        self.assertEqual(_tier_status({**base, "tier": 2}), ("Tier2 到達", "tier-hit tier-2"))
+        self.assertEqual(_tier_status({**base, "tier": 3}), ("Tier3 到達", "tier-hit tier-3"))
         self.assertEqual(_tier_status({**base, "thresholds": []}), ("Tier未設定", "tier-none"))
         self.assertEqual(_tier_status({**base, "drawdown": None}), ("取得失敗", "tier-none"))
 
-    def test_tier_colors_do_not_clash_with_plus_minus_colors(self):
+    def test_tier_colors_are_purple_levels_distinct_from_plus_minus(self):
         css = (Path(__file__).parent.parent / "scripts" / "generate_dashboard.py").read_text(encoding="utf-8")
-        colors = {k: re.search(r"\.val-tier\.tier-%s, \.status-badge\.tier-%s \{\{ color: ([^;]+);" % (k, k), css).group(1) for k in ("hit", "ok", "none")}
+        colors = {k: re.search(r"\.val-tier\.tier-%s, \.status-badge\.tier-%s \{\{ color: ([^;]+);" % (k, k), css).group(1)
+                  for k in ("1", "2", "3", "ok", "none")}
         for plus_minus in ("var(--green)", "var(--red)"):
             self.assertNotIn(plus_minus, colors.values())      # 未到達を緑にしない（プラス表示と紛らわしい）
-        self.assertEqual(len(set(colors.values())), 3)         # 到達・未到達・未設定は別の色
+        self.assertEqual(len(set(colors.values())), 5)         # Tier1〜3・未到達・未設定は全て別の色
+        for level in ("1", "2", "3"):                           # Tier1〜3は紫系（色相250〜310度。オレンジ等のポジティブな色にしない）
+            r, g, b = (int(colors[level][i:i + 2], 16) / 255 for i in (1, 3, 5))
+            hue = colorsys.rgb_to_hls(r, g, b)[0] * 360
+            self.assertTrue(250 <= hue <= 310, f"Tier{level} の色が紫系でない: {colors[level]} (色相{hue:.0f})")
+        # 段階が上がるほど色が鮮やかになる（Tier1は淡く、Tier3は最も鮮やか。彩度の指標＝RGBの最大値−最小値）
+        chroma = {}
+        for lv in ("1", "2", "3"):
+            rgb = [int(colors[lv][i:i + 2], 16) for i in (1, 3, 5)]
+            chroma[lv] = max(rgb) - min(rgb)
+        self.assertLess(chroma["1"], chroma["2"])
+        self.assertLess(chroma["2"], chroma["3"])
 
 
 SETTINGS = helpers.load_settings()

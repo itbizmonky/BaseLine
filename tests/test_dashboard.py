@@ -168,6 +168,17 @@ class ChartWindowTest(unittest.TestCase):
         self.assertEqual(len(data["labels"]), 180)
 
 
+class FaviconTest(unittest.TestCase):
+    def test_page_links_the_line_icon_images_that_exist_in_public(self):
+        from generate_dashboard import FAVICON_LINKS
+        assets = all_assets(SETTINGS)
+        page = _render_html("2026-11-25", "", "", "", "", "", "", "", "{}", SETTINGS, assets)
+        self.assertIn(FAVICON_LINKS, page)
+        public = Path(__file__).parent.parent / "public"
+        for name in re.findall(r'href="([^"]+\.png)"', FAVICON_LINKS):
+            self.assertTrue((public / name).exists(), f"public/{name} がありません（ページ生成では作られないので、リポジトリにコミットしておく）")
+
+
 class ChartScriptTest(unittest.TestCase):
     def test_chart_update_does_not_use_active_mode(self):
         # update('active') は全ての点をホバー状態（丸）で描画してしまう（タブ切替で丸が密集する不具合の原因）

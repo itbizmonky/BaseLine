@@ -738,6 +738,15 @@ def _build_monthly_ops_section(settings: dict, today_str: str = "") -> str:
 # HTML レンダリング
 # ------------------------------------------------------------------
 
+# サイトアイコン（ブラウザのタブ・お気に入りに表示）。LINE通知のアイコンと同じ画像（円形）を、public/ の
+# 画像ファイル（favicon-32.png・favicon-64.png・apple-touch-icon.png）として配信する。ページ生成では上書きされない
+FAVICON_LINKS = (
+    '<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">\n'
+    '<link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png">\n'
+    '<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">'
+)
+
+
 def _render_html(
     today_str: str,
     banner_html: str,
@@ -764,6 +773,8 @@ def _render_html(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>投資判断ダッシュボード</title>
+{FAVICON_LINKS}
+<meta name="theme-color" content="#0b0d13">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Inter:wght@400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>

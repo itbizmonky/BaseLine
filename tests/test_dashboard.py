@@ -136,5 +136,14 @@ class CompactLayoutTest(unittest.TestCase):
             self.assertIn(f'id="{target}"', page)
 
 
+class ChartScriptTest(unittest.TestCase):
+    def test_chart_update_does_not_use_active_mode(self):
+        # update('active') は全ての点をホバー状態（丸）で描画してしまう（タブ切替で丸が密集する不具合の原因）
+        from generate_dashboard import _SCRIPT_JS
+        self.assertNotIn("update('active')", _SCRIPT_JS)
+        self.assertNotIn('update("active")', _SCRIPT_JS)
+        self.assertIn("pointRadius: 0", _SCRIPT_JS)   # 通常時は点を描かない
+
+
 if __name__ == "__main__":
     unittest.main()

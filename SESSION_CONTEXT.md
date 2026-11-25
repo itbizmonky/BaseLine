@@ -258,3 +258,8 @@ BaseLineプロジェクトにおける、Claude Codeとの作業セッション�
 - ユーザー指摘: オレンジだとポジティブな印象を受けるため、Tier1〜3は紫系にし、段階ごとにレベル感を出す。`generate_dashboard.py`: Tier1=`#c4b5fd`（淡い紫）、Tier2=`#a78bfa`（紫）、Tier3=`#d946ef`（鮮やかな赤紫・太字800・発光）。`_tier_status`のCSSクラスは`tier-hit tier-N`（N=1〜3）、未到達=グレー`#94a3b8`・未設定/取得失敗=`#64748b`は維持。注意バナーの銘柄名（`bn-link bn-tN`）も同じ色。
 - 検証: テスト`test_tier_colors_are_purple_levels_distinct_from_plus_minus`（Tier1〜3が色相250〜310度の紫系・彩度が段階的に上がる・緑/赤/未到達/未設定と別の色）。画面で、Tier1〜3を差し替えて並べ、段階の違いと未到達（グレー）との区別を確認。単体テスト63件、Python 3.11の構文OK。
 
+### 2026-11-25: 推移グラフの丸マークが密集する不具合の修正
+- ユーザー指摘: 推移グラフの線に小さな丸が密集して表示され、マウスを乗せると消えて見やすくなる。デフォルトで出さないようにしたい。
+- 原因: 銘柄タブの切替で`renderChart()`が`chartInstance.update('active')`を呼んでいた。Chart.jsの`'active'`モードは全ての点を「ホバー中」の状態（`pointHoverRadius: 6`）で描画するため、タブ切替後は全点に丸が出て、マウスを乗せて再描画されると消えた。初期表示（`new Chart`）では出ない。本番ページで、タブを切り替える操作を再現して確認。
+- 修正: `update('active')`→`update()`（`generate_dashboard.py`の`_SCRIPT_JS`）。通常時は点を描かない（`pointRadius: 0`）まま、ホバー時にだけ該当位置の点が出る挙動は維持。テスト`test_chart_update_does_not_use_active_mode`。修正後の画面で、全銘柄タブ→S&P500タブ→全銘柄タブの切替後に丸が出ないこと、1銘柄タブ（Tier閾値の破線・約定マーカーの星）が正常なことを確認。テスト64件、Python 3.11の構文OK。
+

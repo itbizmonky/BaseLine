@@ -1399,7 +1399,8 @@ function renderChart(filter = 'all') {
   if (chartInstance) {
     chartInstance.data.datasets = datasets;
     chartInstance.options.plugins.legend.display = filter === 'all';
-    chartInstance.update('active');
+    // 'active' モードで更新すると、全ての点が「ホバー中」の大きな丸で描画されて線が見づらくなるため、通常の更新にする
+    chartInstance.update();
     return;
   }
 

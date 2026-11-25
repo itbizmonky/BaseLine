@@ -34,7 +34,7 @@ Tierは最高値比の「下落の目安」（購入の指示ではありませ�
 | テスラ（TSLA） | サテライト | − | -31% | -49% | -67% |
 | エヌビディア（NVDA） | サテライト | − | -24% | -38% | -67% |
 
-最高値の起点は、資産ごとに最初に購入した日（`baseline.dates`。既定は`peak_start_date`＝2026-07-07）です。履歴が無い期間は、約定単価も参考に初期の最高値を決めます。表示順は`funds`の並び順（投資信託）→ `positions.items`（米国株）です。
+最高値の起点は、資産ごとに最初に購入した日（`baseline.dates`。既定は`peak_start_date`＝2026-07-07＝S&P500・SOX・FANG+の最初の購入日）です。推移グラフ・履歴の開始日（`history.start_date`＝2026-01-01）とは別で、グラフの閾値線は各資産の最高値の起点日から描きます。履歴が無い期間は、約定単価も参考に初期の最高値を決めます。表示順は`funds`の並び順（投資信託）→ `positions.items`（米国株）です。
 
 ---
 
@@ -243,6 +243,7 @@ python scripts/update_purchases.py 約定履歴_投信.csv 約定履歴_米国�
 | `migrate_purchase_history.py <投信CSV> <米国株CSV> [--expect JSON] [--apply]` | 購入実績をCSVに合わせて整備（既存残高の二重計上の解消、口数・枠の補完、NVDA・TSLAの追加）。既定はdry-run。`--expect`でSBI保有画面の口数と照合 |
 | `migrate_data_layout.py [--apply]` | `data/`を現在の構成へ（`history.csv`にSBI・V・はじめてのNISAの列を追加、`positions_history.csv`を米国株＋usdjpyに作り直し、Yahoo Financeから欠損を補完、`triggered.json`を新形式へ）。既定はdry-run |
 | `migrate_history_asof.py [--apply]` | `history.csv`・`positions_history.csv`・`peak.json`の日付を、実行日から価格の基準日へ付け替える（一度きり。2026-11-25適用）。既定はdry-run。約定単価との一致率を出力し、値の不一致があれば`--apply`を拒否 |
+| `backfill_history.py [--apply]` | 履歴の欠けている期間（`history.start_date`＝2026-01-01〜）を、日経（QUICK）の日次の基準価額とYahoo Financeの日次終値で補う（一度きり。全銘柄の推移グラフを7/7から表示するため）。既存の値は上書きせず、最高値は引き上げのみ。既定はdry-run |
 
 ---
 

@@ -150,6 +150,24 @@ class ChartAlignmentTest(unittest.TestCase):
         self.assertEqual(series[marker["index"]], marker["price"])
 
 
+class ChartWindowTest(unittest.TestCase):
+    def test_chart_starts_at_the_history_start_date_and_tier_lines_start_at_each_peak_origin(self):
+        from generate_dashboard import _build_chart_data
+        settings = {**SETTINGS, "history": {"start_date": "2026-01-01"}}
+        history = [{"date": "2025-12-30", "orkan": 30000.0}, {"date": "2026-01-05", "orkan": 31000.0}, {"date": "2026-03-02", "orkan": 33000.0}]
+        data = _build_chart_data(all_assets(settings), history, [], settings, {"orkan": {"value": 39019.0, "date": "2026-08-14"}}, 159.0, {})
+        self.assertEqual(data["labels"], ["2026-01-05", "2026-03-02"])        # 開始日より前は含めない
+        self.assertEqual(data["tier_lines"]["orkan"]["start"], "2026-02-10")   # 最高値の起点＝最初の購入日（閾値線はここから描く）
+        self.assertTrue(all(ds["spanGaps"] for ds in data["datasets"]))        # 米国の休場日（値なし）で線を切らない
+
+    def test_without_a_start_date_the_last_180_rows_are_shown(self):
+        from generate_dashboard import _build_chart_data
+        settings = {k: v for k, v in SETTINGS.items() if k != "history"}
+        history = [{"date": f"2026-{1 + i // 28:02d}-{1 + i % 28:02d}", "orkan": 1.0} for i in range(200)]
+        data = _build_chart_data(all_assets(settings), history, [], settings, {}, 159.0, {})
+        self.assertEqual(len(data["labels"]), 180)
+
+
 class ChartScriptTest(unittest.TestCase):
     def test_chart_update_does_not_use_active_mode(self):
         # update('active') は全ての点をホバー状態（丸）で描画してしまう（タブ切替で丸が密集する不具合の原因）

@@ -49,7 +49,7 @@
 config/settings.json    # 資産・Tier閾値・積立設定・NISA枠・取込設定（唯一の設定源）
 data/history.csv         # 投資信託の日次基準価額の蓄積（行の日付＝基準価額の基準日。同じ基準日・同値はべき等、異なる値は上書きせず訂正記録）
 data/history_corrections.csv  # 既存値と異なる再取得値の記録（上書きしない。as_of・列・記録値・再取得値・取得日）
-data/peak.json            # 資産ごとの設定来高値（起点日は baseline.dates、なければ peak_start_date）
+data/peak.json            # 資産ごとの設定来高値（起点日＝最初の購入日。baseline.dates、なければ peak_start_date）。推移グラフ・履歴の開始日（settings.json の history.start_date＝2026-01-01）とは別
 data/triggered.json      # 通知済みTier（重複通知防止のstate）
 data/purchase_history.json  # 購入実績（約定日・単価・口数・金額・区分・口座区分・NISA枠。約定履歴CSVから取り込む）
 data/market.json / positions.json / positions_history.csv  # 市場心理・米国株の最新値と履歴（USD。usdjpy列つき。自動更新）
@@ -68,6 +68,7 @@ scripts/migrate_purchase_history.py / migrate_data_layout.py  # 一度きりの�
 scripts/freshness.py     # 価格の鮮度判定（基準日の遅れ・stale判定・日経の基準日の解析。純粋関数）
 scripts/history_store.py # 履歴CSVを基準日キーで更新する共通処理（history.csv・positions_history.csv）
 scripts/migrate_history_asof.py  # 履歴・最高値の日付を実行日から基準日へ付け替える一度きりの移行（dry-run既定・--applyは承認後。2026-11-25適用）
+scripts/backfill_history.py  # 履歴の欠けている期間（`history.start_date`＝2026-01-01〜）を外部の日次価格（日経＝QUICKの基準価額・Yahoo Finance）で補う一度きりの処理（既存セルは上書きしない・最高値は引き上げのみ。dry-run既定・--applyは承認後）
 scripts/judge.py         # 下落率/Tier/通知済みTier/最高値更新/トレンド計算ロジック
 scripts/notify.py        # LINE Messaging API 通知（メッセージ生成 + 送信）
 scripts/generate_dashboard.py  # public/index.html 生成

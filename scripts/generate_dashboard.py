@@ -150,13 +150,19 @@ def _build_chart_data(
     purchase_history: dict,
 ) -> dict:
     """
-    全保有資産の推移チャートデータ。横軸は history.csv の日付（直近180日）。
+    全保有資産の推移チャートデータ。横軸は history.csv の日付（settings.json の history.start_date 以降。なければ直近180行）。
     米国株（USD）は data（USD）と data_jpy（円換算）の両方を持つ。円換算は、その日の USD/JPY
     （positions_history.csv の usdjpy 列）があればそれ、なければ現在のレートによる近似。
     """
-    recent = history[-180:] if len(history) > 180 else history
+    start_date = (settings.get("history") or {}).get("start_date")   # 履歴の開始日（既定は直近180行）
+    if start_date:
+        recent = [r for r in history if r["date"] >= start_date]
+    else:
+        recent = history[-180:] if len(history) > 180 else history
     labels = [r["date"] for r in recent]
     label_index = {d: i for i, d in enumerate(labels)}
+    baseline_dates = settings.get("baseline", {}).get("dates", {})
+    default_start = settings.get("peak_start_date", "")
     pos_by_date = {r["date"]: r for r in positions_history}
 
     datasets, tier_lines, markers_by_asset = [], {}, {}
@@ -173,6 +179,7 @@ def _build_chart_data(
             "pointRadius": 0,
             "tension": 0.3,
             "fill": False,
+            "spanGaps": True,   # 日本の営業日で米国が休場の日（値なし）で線を切らない
         }
         if a["kind"] == KIND_FUND:
             ds["data"] = [r.get(aid) for r in recent]
@@ -189,6 +196,7 @@ def _build_chart_data(
             tier_lines[aid] = {
                 "peak": peak_val,
                 "tier_values": [round(peak_val * (1 - t / 100), digits) for t in a["tiers"]],
+                "start": baseline_dates.get(aid, default_start),   # 最高値の起点日（これより前には閾値線を描かない）
                 "tiers": a["tiers"],
                 "color": color,
             }
@@ -1338,7 +1346,7 @@ function buildDatasets(filter) {
     tierInfo.tier_values.forEach((val, i) => {
       extra.push({
         label: `Tier${i + 1}閾値 (-${tierInfo.tiers[i]}%)`,
-        data: RAW_DATA.labels.map(() => val),
+        data: RAW_DATA.labels.map(l => (!tierInfo.start || l >= tierInfo.start) ? val : null),   // 最高値の起点日より前は描かない
         borderColor: tierInfo.color,
         borderWidth: 1,
         borderDash: [6, 4],

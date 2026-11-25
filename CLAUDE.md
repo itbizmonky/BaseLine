@@ -26,7 +26,7 @@
 | `tesla` | テスラ（TSLA） | satellite | − | -31% | -49% | -67% |
 | `nvda` | エヌビディア（NVDA） | satellite | − | -24% | -38% | -67% |
 
-これらの値・積立設定・NISA枠などはすべて [config/settings.json](config/settings.json) で管理されており、**コード変更なしで調整可能**であることが非機能要件（NF-06）。閾値やロジックを変更する際は、まず settings.json を疑うこと。サテライト＝オルカンとS&P500以外（`role`）。しきい値は、過去の下落頻度（Tier1＝年1回程度・Tier2＝約3年に1回・Tier3＝約10年に1回）で校正した値（根拠: `Personal/02_判断記録/Tierしきい値_検討結果.md` の標準感度。通知しきい値の目盛りで、売買の推奨ではない）。履歴が短い資産（SBI・V・はじめてのNISA・TSLA・NVDA）は約1年後に再校正する。
+これらの値・積立設定・NISA枠などはすべて [config/settings.json](config/settings.json) で管理されており、**コード変更なしで調整可能**であることが非機能要件（NF-06）。閾値やロジックを変更する際は、まず settings.json を疑うこと。サテライト＝オルカンとS&P500以外（`role`）。しきい値は、過去の下落頻度の目安（長期平均で Tier1 約1エピソード/年・Tier2 約0.3回/年・Tier3 約0.1回/年。暦年ごとに鳴るとは限らず、期間外検証では目標の1.5〜3倍多い）で校正した**暫定値**（根拠: `Personal/02_判断記録/Tierしきい値_検討結果.md` の標準感度と付録B、外部検証 `..._deep-research-report.md`。通知しきい値の目盛りで、売買の推奨ではない）。実際の通知ログを見て約3か月後に見直し、約1年後に再校正する（履歴が短いSBI・V・はじめてのNISA・TSLA・NVDAと、代理指数のTracers・SOX・FANG+は特に不確実）。TSLA・NVDAは`alert:false`（参考値。目標頻度での校正は未了）。
 
 ## 処理フロー（毎朝 平日 JST 07:00、GitHub Actions）
 
@@ -37,7 +37,7 @@
 2.5. `market_data.py`（市場心理指標）・`positions.py`（米国株TSLA・NVDAの株価。Yahoo Finance チャートAPI）を取得。失敗しても処理を継続（米国株は前回値を維持）
 3. 取得失敗の資産があれば `notify_fetch_error()` でLINE通知（F-11）
 4. `judge.py`: `data/peak.json`（設定来高値）を資産ごとの起点日（`baseline.dates`。最初の購入日）以降で更新。履歴に無い期間は約定単価も参考に初期値を決める
-5. 全資産の最高値比・前日比・Tier・平均取得単価比を計算。`alert: true` の資産が**通知済みより深いTier**に到達したら `notify_tier_reached()` でLINE通知し、`data/triggered.json`（`{資産ID: {"tier","date"}}`）に記録。下落率が「通知済みTierのしきい値 × `alert.rearm_ratio`（0.5）」より浅くなったら通知済みTierを下げる（再武装。しきい値付近の往復で通知が数倍に増えるのを防ぐ）
+5. 全資産の最高値比・前日比・Tier・平均取得単価比を計算。`alert: true` の資産について、`judge.update_alert_state()` が**Tierごとに独立して**「武装中／通知済み」を持つ（Tier1〜3は互いに影響しない）。しきい値に新たに到達した武装中のTierは全て通知済みとして`data/triggered.json`（`{資産ID: {"tier","date","notified":{Tier番号: 通知日}}}`。`notified`が正本）に記録し、**最も深いTierだけ**を `notify_tier_reached()` でLINE通知する（同時に複数越えても1通）。通知済みTierは、下落率が「そのTierのしきい値 × `alert.rearm_ratio`（0.5）」より浅くなったときに、そのTierだけ再武装する（しきい値付近の往復で通知が数倍に増えるのを防ぐ。校正の前提と同じ定義）
 6. 全保有資産の日次サマリー（「最高比」「平均比」のみ。プラス緑・マイナス赤のFlexメッセージ。失敗時はテキストで再送）を `notify_daily_summary()` でLINE通知
 7. `data/history.csv`（新銘柄の列は自動追加）/ `data/peak.json` / `data/triggered.json` を保存（`market.json`・`positions.json`・`positions_history.csv`はそれぞれの取得ステップで保存）
 8. `generate_dashboard.py`: `public/index.html` を生成（Chart.jsはCDN読み込み）。構成は 注意バナー（Tier到達中・取得失敗）／固定ナビ／ルールと見方／運用手順／投資意思決定サマリー／銘柄毎の詳細（折りたたみ）／基準価額の推移とTier閾値／市場心理／資金投入管理状況／長期ポートフォリオ（表はスマホでも1銘柄1行）
@@ -106,7 +106,7 @@ GitHub Actions 上では `workflow_dispatch` から `dry_run: true` で手動テ
 - **スクレイピング・外部APIの脆弱性**: `fetch_nav.py` は日経電子版のCSSセレクタ（`.m-stockPriceElm_value`）に依存している。サイト構造変更で取得失敗する可能性があるため、変更時は要件定義書の「残課題」も参照。米国株は Yahoo Finance（米国）のチャートAPI（`query1/query2.finance.yahoo.com/v8/finance/chart/<ticker>`）から取得する（Yahoo!ファイナンスJPのHTMLは2026-10以降、価格をJSで描画するため取得できない）。GitHub Actions のIPから取得できるかは本番で要確認（失敗時は前回値で継続しLINEに取得エラーを通知）。要件定義書ではYahoo!ファイナンスを想定していたが、投資信託は日経電子版に変更されている点に注意。
 - **シークレット**: `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_USER_ID` はGitHub Secretsで管理。コードやconfigに直書きしない。
 - **cronの自動同期**: `monitor.yml` の cron 式を直接編集しても、次回 `monitor.py` 実行時に `settings.json` の `schedule` の値で上書きされる。スケジュール変更は `settings.json` 側で行うこと。
-- **triggered.json は重複通知防止のための唯一のstate**。誤って削除するとTier到達通知が再送されるため、消す場合は影響を理解した上で行う。旧形式（Tier別レコードのリスト）は `load_triggered()` が新形式へ自動移行する。
+- **triggered.json は重複通知防止のための唯一のstate**。誤って削除するとTier到達通知が再送されるため、消す場合は影響を理解した上で行う。`notified`の無い旧形式（`{"tier","date"}`）は自動変換せず、`update_alert_state()` が初回に現在の下落率から初期化する（旧tier以下で、まだ再武装されていない＝下落率がしきい値×0.5以上のTierだけを通知済みにし、`migrated`に効力日を残す。2026-11-25に適用）。さらに古い形式（Tier別レコードのリスト）は `load_triggered()` が旧形式へ移行する。
 - **public/index.html は生成物**。手動編集しても次回実行で上書きされる。テンプレート変更は `generate_dashboard.py` を編集する。
 - **資産の追加・停止は設定のみで行う**: 投資信託は`funds`、米国株は`positions.items`に追加（`role`・`alert`・`tiers`）。Tier未設定は`tiers: []`。表示順は`funds`→`positions.items`の並び順。`history.csv`・`positions_history.csv`は列が自動で増える。資産IDをコードに固定しない（`.get(asset_id, [])`で未登録を空扱いする）。
 - **`--dry-run`は通知送信コードパスを通らない**（8/10-11の本番クラッシュの教訓、要件定義書 残課題No.7）。通知関連の変更は`_send_line_message`をモックして`notify_*`を実際に呼んで確認すること（`tests/test_notify_settings.py`）。また`--dry-run`もデータファイル（`data/*`）を書き換えるため、テスト後は`git checkout`で戻す（本番の記録はGitHub Actionsに一本化）。

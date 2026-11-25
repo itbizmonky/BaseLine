@@ -5,7 +5,7 @@ judge.py
 
 - 下落率の計算（設定来高値比）
 - Tier判定（Tier1/2/3 または 0=未到達）。Tierは「下落の気づき」の目安で、購入判定・投入額とは無関係
-- 通知済みTierの記録と再通知の制御（重複通知防止・回復後の再武装）
+- 通知済みTierの記録と再通知の制御（Tierごとに独立した武装・通知済み状態。重複通知防止・回復後の再武装）
 - 直近トレンド計算（↗↘→）
 """
 
@@ -297,9 +297,12 @@ def load_triggered() -> dict:
     """
     通知済みTierを読み込む。ファイルがなければ空を返す。
 
-    形式: {資産ID: {"tier": 通知済みの最大Tier, "date": 通知日(YYYY-MM-DD)|None}}
-    旧形式（Tier別レコードのリスト [{"tier","date","invested",...}] や整数のリスト）が残っている場合は、
-    最大のTierとその日付に自動的に移行する（invested・note・recovered は破棄。「通知済み」と
+    形式: {資産ID: {"tier": 通知済みの最大Tier, "date": 直近の通知日, "notified": {"Tier番号": 通知日},
+                    "migrated": {"from", "date"}（旧形式から初期化した記録。任意）}}
+    `notified` が通知済み（まだ再武装されていない）Tierの正本。無い記録は旧形式（{"tier","date"}）で、
+    update_alert_state() が初回に現在の下落率から初期化する（ここでは変換しない）。
+    さらに古い形式（Tier別レコードのリスト [{"tier","date","invested",...}] や整数のリスト）は、
+    最大のTierとその日付の旧形式に変換する（invested・note・recovered は破棄。「通知済み」と
     「投資したか」を分け、投資の事実は約定履歴で確認する運用に変えたため）。
     """
     if not TRIGGERED_FILE.exists():
@@ -309,8 +312,14 @@ def load_triggered() -> dict:
     migrated = {}
     for asset_id, value in data.items():
         if isinstance(value, dict):
-            if value.get("tier"):
-                migrated[asset_id] = {"tier": int(value["tier"]), "date": value.get("date")}
+            if not value.get("tier"):
+                continue
+            record = {"tier": int(value["tier"]), "date": value.get("date")}
+            if isinstance(value.get("notified"), dict):
+                record["notified"] = {str(k): v for k, v in value["notified"].items()}
+            if value.get("migrated"):
+                record["migrated"] = value["migrated"]
+            migrated[asset_id] = record
             continue
         records = [{"tier": r, "date": None} if isinstance(r, int) else r for r in (value or [])]
         if records:
@@ -326,50 +335,83 @@ def save_triggered(triggered: dict) -> None:
         json.dump(triggered, f, ensure_ascii=False, indent=2)
 
 
+def _notified_map(record: dict | None) -> dict[int, str | None]:
+    """記録から {通知済みTier番号: 通知日} を取り出す（notified が無い旧形式は空。初期化は update_alert_state が行う）。"""
+    return {int(k): v for k, v in ((record or {}).get("notified") or {}).items()}
+
+
 def notified_tier(asset_id: str, triggered: dict) -> int:
-    """通知済みの最大Tier（なければ0）。"""
-    return int((triggered.get(asset_id) or {}).get("tier", 0))
+    """通知済み（再武装されていない）Tierのうち最大のもの（なければ0）。旧形式の記録は tier の値。"""
+    record = triggered.get(asset_id) or {}
+    notified = _notified_map(record)
+    if notified:
+        return max(notified)
+    return int(record.get("tier", 0))
 
 
-def is_new_trigger(asset_id: str, current_tier: int, triggered: dict) -> bool:
-    """
-    新規Tier到達（通知すべきか）を判定する。通知済みのTierより深いTierに到達したときだけ True。
-    同じ下落局面が続いている間は再通知しない。回復後の再武装は rearm_if_recovered() が行う。
-    """
-    return current_tier > notified_tier(asset_id, triggered)
+def _store_notified(asset_id: str, notified: dict[int, str | None], triggered: dict, migrated: dict | None = None) -> None:
+    """通知済みTierの状態を triggered に書き戻す（通知済みが無ければ記録ごと削除）。"""
+    if not notified:
+        triggered.pop(asset_id, None)
+        return
+    top = max(notified)
+    dates = [d for d in notified.values() if d]
+    triggered[asset_id] = {
+        "tier": top,
+        "date": max(dates) if dates else None,
+        "notified": {str(k): notified[k] for k in sorted(notified)},
+    }
+    if migrated:
+        triggered[asset_id]["migrated"] = migrated
 
 
-def record_notified(asset_id: str, tier: int, triggered: dict, date: str | None = None) -> dict:
-    """通知したTierを記録する（破壊的変更）。"""
-    triggered[asset_id] = {"tier": tier, "date": date}
-    return triggered
-
-
-def rearm_if_recovered(
+def update_alert_state(
     asset_id: str,
     drawdown: float,
     thresholds: list[float],
     triggered: dict,
     ratio: float = DEFAULT_REARM_RATIO,
-) -> dict:
+    today: str | None = None,
+) -> int:
     """
-    下落率が「通知済みTierのしきい値 × ratio」より浅くなったら、通知済みTierを下げる（破壊的変更）。
-    再び下落して深いTierに達したときに再通知できるようにするための状態更新。
-    しきい値付近の小さな上下では解除しない（ちらつきによる連続通知の防止）。
-    例: Tier1が11%、ratio=0.5 なら、下落率が5.5%より浅くなるまでは通知済みのまま。
-    下げ先は、現在の下落率でまだ到達しているTier（どれも到達していなければ記録を削除）。
+    1資産の通知状態を更新し、今回通知すべきTier（なければ0）を返す（triggered を破壊的に更新）。
+    Tier1〜3は互いに独立して「武装中／通知済み」を持つ（校正の前提と同じ定義）。
+
+    1. 再武装: 通知済みのTier i は、下落率が thresholds[i-1] × ratio より浅くなったら武装中に戻す
+       （しきい値付近の往復では解除しない。例: Tier1が11%、ratio=0.5 なら5.5%より浅くなるまで通知済み）。
+    2. 到達: 下落率がしきい値以上で、武装中のTierを「新規到達」とする。
+    3. 新規到達したTierは全て通知済みとして記録し、通知するのは最も深いTierだけ（同時に複数越えても1通）。
+
+    旧形式の記録（notified が無い）は、初回に現在の下落率から初期化する: 旧tier以下のTierのうち、
+    まだ再武装されていない（下落率 ≥ しきい値×ratio）ものだけを通知済みにし、"migrated" に効力日を残す。
+    切替時点での通知の有無は、旧ロジックと変わらない。
     """
-    notified = notified_tier(asset_id, triggered)
-    if notified <= 0 or not thresholds or notified > len(thresholds):
-        return triggered
-    if drawdown < thresholds[notified - 1] * ratio:
-        reached = judge_tier(drawdown, thresholds)
-        if reached < notified:
-            if reached == 0:
-                triggered.pop(asset_id, None)
-            else:
-                triggered[asset_id] = {"tier": reached, "date": (triggered.get(asset_id) or {}).get("date")}
-    return triggered
+    thresholds = list(thresholds or [])
+    if not thresholds:
+        return 0
+    record = triggered.get(asset_id)
+    migrated = (record or {}).get("migrated")
+    if record is not None and "notified" not in record:
+        legacy_tier = int(record.get("tier", 0))
+        notified = {
+            i: record.get("date")
+            for i in range(1, min(legacy_tier, len(thresholds)) + 1)
+            if drawdown >= thresholds[i - 1] * ratio
+        }
+        migrated = {"from": "v1", "date": today}
+        logger.info(f"{asset_id}: 通知状態を旧形式から初期化しました（旧Tier{legacy_tier} → 通知済み {sorted(notified)}、効力日 {today}）")
+    else:
+        notified = _notified_map(record)
+
+    for i in list(notified):
+        if i > len(thresholds) or drawdown < thresholds[i - 1] * ratio:
+            del notified[i]
+
+    newly = [i for i, t in enumerate(thresholds, start=1) if drawdown >= t and i not in notified]
+    for i in newly:
+        notified[i] = today
+    _store_notified(asset_id, notified, triggered, migrated)
+    return max(newly) if newly else 0
 
 
 # ------------------------------------------------------------------

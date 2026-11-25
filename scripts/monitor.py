@@ -47,7 +47,7 @@ from judge import (
     load_history, append_history,
     update_peak,
     calc_drawdown, judge_tier, calc_day_change,
-    is_new_trigger, record_notified, rearm_if_recovered, calc_trend,
+    update_alert_state, calc_trend,
     DEFAULT_REARM_RATIO,
 )
 from notify import notify_tier_reached, notify_fetch_error, notify_daily_summary
@@ -324,16 +324,16 @@ def main(dry_run: bool = False) -> None:
             f"前日比={result['day_change'] if result['day_change'] is None else format(result['day_change'], '+.2f') + '%'} / Tier={tier}"
         )
 
-        # alert対象は、新しいTierに到達したときだけLINE通知する（重複通知防止・回復後に再武装）。
+        # alert対象は、新しいTierに到達したときだけLINE通知する。Tierごとに独立して武装・通知済みを持ち
+        # （重複通知防止・回復後に再武装）、同時に複数越えても最も深いTierを1通だけ通知する。
         # 通知しても購入額・BUY表示・原資の消費は伴わない
         if asset["alert"]:
-            triggered = rearm_if_recovered(aid, drawdown, asset["tiers"], triggered, rearm_ratio)
-            if is_new_trigger(aid, tier, triggered):
+            notify_tier = update_alert_state(aid, drawdown, asset["tiers"], triggered, rearm_ratio, today_str)
+            if notify_tier:
                 if not dry_run and notifications_enabled:
-                    notify_tier_reached(asset, tier, drawdown, avg_ratio, dashboard_url)
+                    notify_tier_reached(asset, notify_tier, drawdown, avg_ratio, dashboard_url)
                 else:
-                    logger.info(f"[DRY RUN or 通知OFF] {asset['short_name']} Tier{tier} 到達通知をスキップ")
-                triggered = record_notified(aid, tier, triggered, date=today_str)
+                    logger.info(f"[DRY RUN or 通知OFF] {asset['short_name']} Tier{notify_tier} 到達通知をスキップ")
 
     # ----------------------------------------------------------
     # 6. 日次サマリー通知（全保有資産の最高値比・平均取得単価比）

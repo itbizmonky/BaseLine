@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 try:
@@ -10,8 +11,8 @@ except ImportError:
 
 import judge
 from judge import (
-    calc_day_change, calc_drawdown, is_new_trigger, judge_tier, load_triggered, notified_tier,
-    record_notified, rearm_if_recovered, seed_initial_peak, update_peak,
+    calc_day_change, calc_drawdown, judge_tier, load_triggered, notified_tier,
+    save_triggered, seed_initial_peak, update_alert_state, update_peak,
 )
 
 TIERS = [10, 18, 28]
@@ -49,27 +50,89 @@ class DayChangeTest(unittest.TestCase):
         self.assertIsNone(calc_day_change(self.ROWS, "missing", 100.0, "2026-11-24"))
 
 
+def run_path(thresholds, path, state=None, ratio=0.5):
+    """下落率の列を1日ずつ流し、通知されたTierの列を返す（monitor.pyと同じ呼び方）。"""
+    state = {} if state is None else state
+    notes = []
+    for day, dd in enumerate(path):
+        tier = update_alert_state("x", dd, thresholds, state, ratio, f"d{day}")
+        if tier:
+            notes.append(tier)
+    return notes, state
+
+
 class AlertStateTest(unittest.TestCase):
     def test_notify_only_when_a_deeper_tier_is_reached(self):
-        state = {}
-        self.assertFalse(is_new_trigger("x", 0, state))
-        self.assertTrue(is_new_trigger("x", 1, state))
-        record_notified("x", 1, state, "2026-11-01")
-        self.assertFalse(is_new_trigger("x", 1, state))  # 同じ下落局面では再通知しない
-        self.assertTrue(is_new_trigger("x", 2, state))   # より深いTierは通知する
+        notes, _ = run_path(TIERS, [0, 5, 10, 12, 18, 20, 18])
+        self.assertEqual(notes, [1, 2])  # 同じ下落局面では再通知しない。深いTierは通知する
 
     def test_rearm_needs_half_threshold_to_avoid_flicker(self):
-        state = {"x": {"tier": 1, "date": "2026-11-01"}}
-        rearm_if_recovered("x", 8.0, TIERS, state, ratio=0.5)  # Tier1=10 の半分(5)より深い → 解除しない
+        # Tier1=10。5（半分）以上にいる間は何度往復しても再通知しない
+        notes, state = run_path(TIERS, [10, 8, 11, 6, 12, 5.5, 10])
+        self.assertEqual(notes, [1])
         self.assertEqual(notified_tier("x", state), 1)
-        rearm_if_recovered("x", 4.9, TIERS, state, ratio=0.5)  # 半分より浅くなった
-        self.assertEqual(notified_tier("x", state), 0)
-        self.assertTrue(is_new_trigger("x", 1, state))          # 再び下がれば再通知
+        # 半分(5)より浅くなると再武装され、再び下がれば再通知する
+        notes, state = run_path(TIERS, [10, 4.9, 10])
+        self.assertEqual(notes, [1, 1])
 
-    def test_rearm_lowers_to_the_tier_still_reached(self):
-        state = {"x": {"tier": 3, "date": "2026-11-01"}}
-        rearm_if_recovered("x", 13.0, TIERS, state, ratio=0.5)  # Tier3=28 の半分(14)より浅く、Tier1(10)には到達
-        self.assertEqual(notified_tier("x", state), 1)
+    def test_sox_example_does_not_renotify_tier2_before_it_is_rearmed(self):
+        # 校正の定義（Tierごとの独立再武装）と一致すること。Tier2(33)は16.5より浅くなるまで通知済みのまま
+        notes, state = run_path([16, 33, 45], [0, 10, 20, 35, 46, 40, 30, 20, 34, 40, 10, 0])
+        self.assertEqual(notes, [1, 2, 3])
+        # 末尾で全て再武装され、記録が消える
+        self.assertNotIn("x", state)
+        # その後の再下落は、また順に通知される
+        notes2, _ = run_path([16, 33, 45], [0, 20, 35, 46], state)
+        self.assertEqual(notes2, [1, 2, 3])
+
+    def test_tiers_rearm_independently(self):
+        # Tier3まで到達後、Tier3だけ再武装（< 14）しても、Tier1・2は通知済みのまま
+        notes, state = run_path(TIERS, [10, 18, 28, 13])
+        self.assertEqual(notes, [1, 2, 3])
+        self.assertEqual(sorted(int(k) for k in state["x"]["notified"]), [1, 2])
+        self.assertEqual(notified_tier("x", state), 2)
+
+    def test_crossing_several_tiers_at_once_notifies_only_the_deepest_but_records_all(self):
+        notes, state = run_path(TIERS, [0, 20])
+        self.assertEqual(notes, [2])  # Tier1・2を同時に越えても1通（深いほう）
+        self.assertEqual(sorted(int(k) for k in state["x"]["notified"]), [1, 2])
+        self.assertEqual(state["x"]["tier"], 2)
+
+    def test_no_thresholds_never_notifies(self):
+        state = {}
+        self.assertEqual(update_alert_state("x", 99.0, [], state, 0.5, "d"), 0)
+        self.assertEqual(state, {})
+
+    def test_legacy_record_is_initialised_from_current_drawdown_without_renotifying(self):
+        # 旧形式 {"tier":1,"date"}: 下落率が半分以上 → 通知済みとして引き継ぎ、通知なし。効力日を記録
+        state = {"x": {"tier": 1, "date": "2026-11-09"}}
+        self.assertEqual(update_alert_state("x", 8.0, TIERS, state, 0.5, "2026-11-25"), 0)
+        self.assertEqual(state["x"]["notified"], {"1": "2026-11-09"})
+        self.assertEqual(state["x"]["migrated"], {"from": "v1", "date": "2026-11-25"})
+        self.assertEqual(update_alert_state("x", 9.0, TIERS, state, 0.5, "2026-11-26"), 0)  # 以降も再通知しない
+        self.assertEqual(state["x"]["migrated"]["date"], "2026-11-25")  # 効力日は変わらない
+
+    def test_legacy_record_below_half_is_cleared_and_deeper_tier_notifies_only_that_tier(self):
+        state = {"x": {"tier": 1, "date": "2026-11-09"}}
+        self.assertEqual(update_alert_state("x", 3.0, TIERS, state, 0.5, "2026-11-25"), 0)
+        self.assertNotIn("x", state)  # 半分より浅い → 再武装（記録削除）
+        state = {"x": {"tier": 1, "date": "2026-11-09"}}
+        self.assertEqual(update_alert_state("x", 19.0, TIERS, state, 0.5, "2026-11-25"), 2)  # Tier2だけ通知
+        self.assertEqual(sorted(state["x"]["notified"]), ["1", "2"])
+
+    def test_notified_state_round_trips_through_save_and_load(self):
+        _, state = run_path(TIERS, [10, 18])
+        with tempfile.TemporaryDirectory() as d:
+            original_file, original_dir = judge.TRIGGERED_FILE, judge.DATA_DIR
+            judge.TRIGGERED_FILE, judge.DATA_DIR = Path(d) / "triggered.json", Path(d)
+            try:
+                save_triggered(state)
+                loaded = load_triggered()
+            finally:
+                judge.TRIGGERED_FILE, judge.DATA_DIR = original_file, original_dir
+        self.assertEqual(loaded, state)
+        notes, _ = run_path(TIERS, [18, 20], loaded)
+        self.assertEqual(notes, [])  # 読み込み後も通知済みのまま
 
     def test_load_triggered_migrates_old_formats(self):
         old = {
@@ -91,6 +154,18 @@ class AlertStateTest(unittest.TestCase):
         self.assertEqual(migrated["orkan"], {"tier": 2, "date": None})
         self.assertNotIn("fang", migrated)
         self.assertEqual(migrated["new"], {"tier": 1, "date": "2026-11-23"})
+
+    def test_notification_path_sends_one_message_per_alert(self):
+        # --dry-run は通知経路を通らないため、monitor.py と同じ流れで notify_tier_reached を実際に呼んで確認する
+        import notify
+        asset = {"name": "テスト銘柄", "short_name": "テスト"}
+        state = {}
+        with unittest.mock.patch.object(notify, "_send_flex_message", return_value=True) as send:
+            for day, dd in enumerate([0, 20, 21, 25, 9, 20]):  # 20でTier1・2を同時に越える。以降は同じ局面
+                tier = update_alert_state("x", dd, TIERS, state, 0.5, f"d{day}")
+                if tier:
+                    notify.notify_tier_reached(asset, tier, dd, -3.0, "https://example.com/")
+        self.assertEqual(send.call_count, 1)  # 1通のみ。9に戻ってもTier1(5)・Tier2(9)は再武装されず、再び20でも再通知されない
 
 
 class PeakTest(unittest.TestCase):

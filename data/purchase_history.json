@@ -286,6 +286,15 @@
       "account": "side",
       "units": 12650,
       "frame": "growth"
+    },
+    {
+      "date": "2026-11-25",
+      "price": 15033,
+      "amount": 28824,
+      "units": 19174,
+      "frame": "growth",
+      "account": "attack",
+      "category": "定期積立"
     }
   ],
   "newnisa_orkan": [
@@ -531,6 +540,15 @@
       "account": "side",
       "units": 7607,
       "frame": "growth"
+    },
+    {
+      "date": "2026-11-25",
+      "price": 24926,
+      "amount": 30000,
+      "units": 12036,
+      "frame": "growth",
+      "account": "attack",
+      "category": "定期積立"
     }
   ],
   "nvda": [

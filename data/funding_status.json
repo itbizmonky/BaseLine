@@ -1,12 +1,12 @@
 {
-  "as_of": "2026-11-24",
+  "as_of": "2026-11-26",
   "capital": {
-    "used_percent": 45.3,
-    "months_remaining": 27.5
+    "used_percent": 47.3,
+    "months_remaining": 26.5
   },
   "nisa": {
     "year": 2026,
-    "growth_percent": 73.9,
+    "growth_percent": 76.3,
     "tsumitate_percent": 15.8
   }
 }

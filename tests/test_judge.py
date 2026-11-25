@@ -44,6 +44,10 @@ class DayChangeTest(unittest.TestCase):
     def test_same_price_looks_back_further_and_today_row_is_ignored(self):
         self.assertAlmostEqual(calc_day_change(self.ROWS, "a", 110.0, "2026-11-24"), 10.0)  # 100→110
 
+    def test_same_as_of_row_is_ignored_when_the_price_date_is_passed(self):
+        rows = [{"date": "2026-11-20", "a": 110.0}, {"date": "2026-11-24", "a": 121.0}]   # 基準日キーの履歴。今日の基準日の行がある
+        self.assertAlmostEqual(calc_day_change(rows, "a", 121.0, "2026-11-24"), 10.0)
+
     def test_none_when_no_price_or_no_history(self):
         self.assertIsNone(calc_day_change(self.ROWS, "a", None, "2026-11-24"))
         self.assertIsNone(calc_day_change([], "a", 100.0, "2026-11-24"))
@@ -179,6 +183,18 @@ class PeakTest(unittest.TestCase):
         history = [{"date": "2026-08-01", "a": 120.0}, {"date": "2026-06-01", "a": 999.0}]  # 起点前は無視
         seed = seed_initial_peak(history, "a", "2026-07-07", 100.0, "2026-11-24", [("2026-01-06", 90.0), ("2026-10-13", 130.0)])
         self.assertEqual(seed, {"value": 130.0, "date": "2026-10-13"})
+
+    def test_peak_date_and_start_use_the_price_as_of_date(self):
+        baseline = {"dates": {"x": "2026-11-12"}, "prices": {}}
+        peak = {}
+        # 実行日 11/12 でも、価格の基準日が 11/11（起点より前）なら記録しない
+        update_peak(peak, {"x": 100.0}, "2026-11-12", "2026-07-07", [], baseline, None, {"x": "2026-11-11"})
+        self.assertNotIn("x", peak)
+        # 基準日が起点以降なら、最高値の日付は実行日ではなく基準日
+        update_peak(peak, {"x": 100.0}, "2026-11-13", "2026-07-07", [], baseline, None, {"x": "2026-11-12"})
+        self.assertEqual(peak["x"], {"value": 100.0, "date": "2026-11-12"})
+        update_peak(peak, {"x": 110.0}, "2026-11-17", "2026-07-07", [], baseline, None, {"x": "2026-11-16"})
+        self.assertEqual(peak["x"], {"value": 110.0, "date": "2026-11-16"})
 
     def test_peak_rises_with_new_high_only(self):
         peak = {"a": {"value": 100.0, "date": "2026-08-01"}}

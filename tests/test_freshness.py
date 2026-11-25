@@ -115,13 +115,13 @@ class GateTest(unittest.TestCase):
         with mock.patch.object(monitor, "fetch_all_position_quotes", return_value=fetched), \
              mock.patch.object(monitor, "load_positions", return_value={}), \
              mock.patch.object(monitor, "save_positions", side_effect=lambda p: saved.update(p)), \
-             mock.patch.object(monitor, "append_positions_history", side_effect=lambda d, prices, cols: history.append(prices)):
+             mock.patch.object(monitor, "append_positions_history", side_effect=lambda by_as_of, usdjpy, fetched_on: history.append(by_as_of)):
             usable, quotes = monitor.fetch_stocks(settings, "2026-11-25", 159.0, 3)
         self.assertEqual(usable, {"tesla": 380.0})
         self.assertFalse(quotes["tesla"]["stale"])
         self.assertTrue(quotes["nvda"]["stale"])
         self.assertEqual(quotes["nvda"]["date"], "2026-11-17")
-        self.assertNotIn("nvda", history[0])           # 履歴に追記しない（空欄になる）
+        self.assertEqual(history, [{"2026-11-24": {"tesla": 380.0}}])   # 取引日をキーに、判定に使える価格だけ追記（NVDAは追記しない）
         self.assertEqual(saved["nvda"]["date"], "2026-11-17")   # positions.json の date は基準日
         self.assertEqual(saved["nvda"]["fetched"], "2026-11-25")
 

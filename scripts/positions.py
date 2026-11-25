@@ -20,6 +20,8 @@ from pathlib import Path
 
 import requests
 
+from history_store import upsert_rows
+
 logger = logging.getLogger(__name__)
 
 SETTINGS_PATH = Path(__file__).parent.parent / "config" / "settings.json"
@@ -220,53 +222,16 @@ def load_positions_history() -> list[dict]:
     return rows
 
 
-def append_positions_history(today_str: str, prices: dict, columns: list[str]) -> None:
+def append_positions_history(prices_by_as_of: dict, usdjpy: float | None = None, fetched_on: str | None = None) -> None:
     """
-    今日の価格を positions_history.csv に追記する。
-    同日付がすでにある場合は上書きしない（べき等。history.csvと同じ方式）。
-    columns に既存ヘッダにない列（新規追加の米国株・usdjpy）があれば、ヘッダに列を追加して
-    既存行を空欄で補完する（列ずれ防止。judge.append_history() と同じ方式）。
+    米国株の価格を positions_history.csv に、**取引日（基準日）をキーに**反映する（history_store.upsert_rows）。
+    prices_by_as_of: {取引日 'YYYY-MM-DD': {資産ID: USD}}。同じ取引日・同値の再実行（米国の休場日など）は何も変えない。
+    usdjpy（実行時のレート）は、最新の取引日の行に空欄のときだけ入れる（補助的な列なので上書き・訂正記録はしない）。
     """
-    DATA_DIR.mkdir(exist_ok=True)
-    existing = load_positions_history()
-    existing_dates = {r["date"] for r in existing}
-
-    if today_str in existing_dates:
-        logger.info(f"positions_history.csv: {today_str} はすでに存在するためスキップ")
-        return
-
-    header = []
-    if POSITIONS_HISTORY_FILE.exists():
-        with open(POSITIONS_HISTORY_FILE, "r", encoding="utf-8", newline="") as f:
-            header = next(csv.reader(f), [])
-    position_columns = [c for c in header if c != "date"]
-    for pid in columns:
-        if pid not in position_columns:
-            position_columns.append(pid)
-    fieldnames = ["date"] + position_columns
-
-    if header and header != fieldnames:
-        with open(POSITIONS_HISTORY_FILE, "r", encoding="utf-8", newline="") as f:
-            raw_rows = list(csv.DictReader(f))
-        with open(POSITIONS_HISTORY_FILE, "w", encoding="utf-8", newline="") as f:
-            migrated = csv.DictWriter(f, fieldnames=fieldnames, restval="", extrasaction="ignore")
-            migrated.writeheader()
-            migrated.writerows(raw_rows)
-        logger.info(f"positions_history.csv のヘッダを移行しました: {header} → {fieldnames}")
-
-    file_exists = POSITIONS_HISTORY_FILE.exists()
-
-    with open(POSITIONS_HISTORY_FILE, "a", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
-        if not file_exists:
-            writer.writeheader()
-        row = {"date": today_str}
-        for pid in position_columns:
-            val = prices.get(pid)
-            row[pid] = f"{val:.2f}" if val is not None else ""
-        writer.writerow(row)
-
-    logger.info(f"positions_history.csv に {today_str} のデータを追記しました")
+    rows = {d: {pid: f"{v:.2f}" for pid, v in prices.items() if v is not None} for d, prices in prices_by_as_of.items()}
+    if usdjpy is not None and rows:
+        rows[max(rows)]["usdjpy"] = f"{usdjpy:.2f}"
+    upsert_rows(POSITIONS_HISTORY_FILE, rows, fetched_on, fill_only=("usdjpy",))
 
 
 # ------------------------------------------------------------------

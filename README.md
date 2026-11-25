@@ -77,12 +77,13 @@ Tierは最高値比の「下落の目安」（購入の指示ではありませ�
 ├── config/
 │   └── settings.json           # 資産・Tier閾値・積立設定・NISA枠など（ここを編集）
 ├── data/
-│   ├── history.csv             # 投資信託の日次基準価額履歴（自動蓄積。銘柄追加時は列が自動で増える）
+│   ├── history.csv             # 投資信託の日次基準価額履歴（行の日付＝基準価額の基準日。自動蓄積。銘柄追加時は列が自動で増える）
+│   ├── history_corrections.csv # 既存値と異なる再取得値の記録（上書きしない）
 │   ├── peak.json               # 設定来高値記録（自動更新）
 │   ├── triggered.json          # 通知済みTier記録（{資産ID: {"tier","date","notified":{Tier番号: 通知日}}}。Tierごとの武装・通知済み状態。重複通知防止）
 │   ├── market.json             # 市場心理指標の最新値（自動更新）
 │   ├── positions.json          # 米国株（TSLA・NVDA）の最新値（自動更新）
-│   ├── positions_history.csv   # 米国株の日次価格（USD）とUSD/JPY（自動蓄積）
+│   ├── positions_history.csv   # 米国株の日次終値（USD。行の日付＝取引日）とUSD/JPY（自動蓄積）
 │   ├── purchase_history.json   # 購入実績（約定履歴から取り込む）
 │   └── funding_status.json     # 資金管理（月数・使用率のみ。update_purchases.pyが更新）
 ├── scripts/
@@ -241,6 +242,7 @@ python scripts/update_purchases.py 約定履歴_投信.csv 約定履歴_米国�
 |---|---|
 | `migrate_purchase_history.py <投信CSV> <米国株CSV> [--expect JSON] [--apply]` | 購入実績をCSVに合わせて整備（既存残高の二重計上の解消、口数・枠の補完、NVDA・TSLAの追加）。既定はdry-run。`--expect`でSBI保有画面の口数と照合 |
 | `migrate_data_layout.py [--apply]` | `data/`を現在の構成へ（`history.csv`にSBI・V・はじめてのNISAの列を追加、`positions_history.csv`を米国株＋usdjpyに作り直し、Yahoo Financeから欠損を補完、`triggered.json`を新形式へ）。既定はdry-run |
+| `migrate_history_asof.py [--apply]` | `history.csv`・`positions_history.csv`・`peak.json`の日付を、実行日から価格の基準日へ付け替える（一度きり。2026-11-25適用）。既定はdry-run。約定単価との一致率を出力し、値の不一致があれば`--apply`を拒否 |
 
 ---
 
@@ -267,9 +269,9 @@ python scripts/update_purchases.py 約定履歴_投信.csv 約定履歴_米国�
 - 本ツールは投資判断の自動化を行いません。**実際の買付注文はSBI証券での手動操作**です。
 - 投資信託の基準価額と市場心理指標（VIX・米10年国債利回り・USD/JPY）は日本経済新聞 電子版から、米国株（TSLA・NVDA）の株価とUSD/JPYの履歴補完はYahoo Finance（米国）のチャートAPIから取得しています。Yahoo!ファイナンスJPのページは、2026-10以降に価格をJavaScriptで後から描画する構造に変わり、HTMLから取れなくなりました（TSLAの取得が10/20以降止まっていた原因）。取得に失敗した資産は前回値でダッシュボードを更新し、LINEに取得エラーを通知します。
 - 市場心理指標はダッシュボードのみに参考情報として表示され、**LINE通知には含まれません**。Tierの判定は価格（最高値比）だけで行われます。
-- 投資信託の基準価額は前営業日の海外市場終値をもとに決まるため、日付は1営業日遅れの値です。米国株の履歴（`positions_history.csv`）も、各行の日付（日本時間の朝の実行日）に「前営業日の終値」を入れています。
+- 投資信託の基準価額は前営業日の海外市場終値をもとに決まります。履歴（`history.csv`・`positions_history.csv`）と最高値の日付は、**価格の基準日（投信＝基準価額の基準日、米国株＝取引日）**で記録します（2026-11-25に、実行日キーから付け替え。祝日・未更新の日は行が増えず、推移グラフの約定マーカーが価格の線に合います）。
 - 設定来高値（ピーク）は、資産ごとの起点日（最初の購入日。`baseline.dates`、なければ`peak_start_date`）以降のみ記録されます。履歴に無い期間（例: SBI・V・S&P500の2026-01-06〜8月）は、記録済みの値と約定単価の最大値を初期の最高値にするため、真の最高値より低く出る可能性があります（カードに起点日を表示）。
-- Tracers S&P500トップ10（2026-09-19導入）の判定基準日価格は`baseline.prices.tracers`＝2026-09-18の基準価額16,416円（`baseline.dates.tracers`）です。
+- Tracers S&P500トップ10の基準日は、約定履歴（SBI証券）の最初の約定日`baseline.dates.tracers`＝2026-09-25、基準日価格は`baseline.prices.tracers`＝その約定単価16,941円です（最高値の起点も兼ねる。2026-11-25に、旧設定の2026-09-18・16,416円から一次情報に合わせて修正）。
 - 実行日時の判定はすべてJST（日本標準時）基準です。GitHub Actionsの実行環境はUTCですが、スクリプト内でJSTに変換して日付・曜日を判定するため、土日（JST基準）は自動的に処理をスキップします。
 - 公開リポジトリのため、個人の取引明細（約定履歴CSV）・原資の総額・家計情報はコミットしません（`.gitignore`で`Personal/`を除外）。`data/purchase_history.json`の保有口数・取得額は公開されます。
 - 投資はすべて自己責任でお願いします。

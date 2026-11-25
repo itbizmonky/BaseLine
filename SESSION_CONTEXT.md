@@ -293,3 +293,19 @@ BaseLineプロジェクトにおける、Claude Codeとの作業セッション�
 - 実装: `scripts/freshness.py`を新設（`weekday_lag`・`assess`・`classify_prices`・`usable_values`・`parse_nikkei_asof`）。`fetch_nav.py`は`fetch_all_nav_quotes()`で基準日つきに（`fetch_all_nav()`は互換のラッパー）。`positions.py`は`parse_us_stock_quote()`で、取引時間中は確定済みの終値にフォールバックし取引日を返す（`positions.json`の`date`は取引日、`fetched`は実行日）。`monitor.py`は、基準日が直近の平日より`freshness.max_lag_weekdays`（`settings.json`、既定3平日。祝日・年末年始・GWを許容）を超えて古い価格、または取得失敗の前回値を**stale**とし、最高値更新・Tier判定・通知状態の更新・`history.csv`/`positions_history.csv`への追記をしない（下落率なし・「判定保留」）。基準日が取れない場合は価格を使い警告ログ（fail-open）。stale・取得失敗はLINE（基準日つき）とダッシュボードのバナーで区別して知らせる。履歴・最高値の日付（実行日）の意味は変更なし。
 - 検証: 単体テスト86件通過（新規 `tests/test_freshness.py`: 祝日・GW・stale境界、日経ページの基準日の解析、米国株の取引時間内外、`fetch_stocks`のゲート、通知経路のモック）。Python 3.11の構文確認。実ページで全8投信（基準日 11/24）・TSLA/NVDA（取引日 11/24）を取得できることを確認。作業コピーで`--dry-run`し、従来と同じ結果（最高比・Tier・最高値が不変）。さらに基準日を偽装した入力（SOX・NVDAを11/12、Tracersは基準日なし）で、SOX・NVDAの最高値が更新されず、履歴が空欄、バナーに「基準日が古いためTier判定を保留」が出ること、基準日なしのTracersは価格を使うことを確認。
 - 変更なし: しきい値・通知ロジック（段階0）・LINEの通常文面。祝日カレンダー、`history.csv`への基準日列、市場心理指標の鮮度判定は今回やらない。
+
+### 2026-11-25: 整理ノートの更新（`Personal/02_判断記録/未確定・要確認一覧.md`。Git管理外）
+- SBI一次情報（約定履歴・積立設定画面・注文履歴・保有画面）と再構成の結果に基づき、解消済み項目（A-1・A-3・A-4・A-8、B-1・B-3〜B-8・B-10〜B-12、D-1〜D-4）を「解消済み」へ移し、根拠を併記。未解決は B-2（11/23発注分の約定確認）・B-9（子供用資金の名義）・B-13・D-5（Tracersの起点日）・D-6・A-2（v2.0パッチはクローズでよいか）・A-5〜A-7（2027年12月レビュー）・C・E に絞った。新規にT-1（Tierしきい値：約3か月後に通知ログ確認、約1年後に再校正）を追加。コード・設定の変更なし。
+
+### 2026-11-25: 整理ノートの確認反映（B-9・D-5・A-2）
+- B-9: 子供用資金（はじめてのNISA）4回は**利用者名義の成長投資枠**を使用（利用者確認）。成長枠の使用額に含める現行集計が正しい。
+- D-5: 一次情報（約定履歴CSV）に従い、`settings.json`の`baseline.dates.tracers`を`2026-09-18`→`2026-09-25`（最初の約定日）、`baseline.prices.tracers`を`16416`→`16941`（約定単価）に修正（README・要件定義書も更新）。最高値（17,337円・10/8）と通知状態は不変。単体テスト86件通過。
+- A-2: v2.0パッチ（7d8c038）は丸ごとは適用せず、適用に値する内容を選定する方針。候補（C1 履歴を基準日キーで保存／C2 既存履歴の付け替え／C3 前回基準日との比較／C4 LINEサマリーの「一部要確認」／C5 回帰テスト）と不採用の理由を`Personal/05_BaseLine_v2.0/適用候補の選定_20261125.md`にまとめた（利用者の選択待ち）。
+
+### 2026-11-25: 履歴を基準日キーに（v2.0パッチの採用候補 C1＋C2。実装・検証済み、本番反映は承認待ち）
+- 経緯: 整理ノートA-2で、v2.0パッチのうち適用に値する内容を利用者が選定（C1・C2を採用。C3は不要、C4・C5は不採用）。Plan Modeで承認済み。
+- 問題: `history.csv`の行の日付が実行日で、朝7時の実行が読む前営業日の確定値を保存していた。①推移グラフの約定マーカーが価格の線より1営業日左にずれる（付け替え前は約定単価との一致が3/36）②祝日に同値の架空の行が残る③最高値の日付が1営業日遅い。米国株の履歴（`positions_history.csv`）も同じ欠陥。
+- 実装: `scripts/history_store.py`（`upsert_rows`：基準日キー・べき等・異なる値は上書きせず`data/history_corrections.csv`に記録・列追加で既存行を補完）。`judge.append_history`・`positions.append_positions_history`を置換、`judge.update_peak`に`as_of`を追加（最高値の日付・起点日との比較に基準日を使う）。`monitor.py`が基準日をキーに追記（基準日が不明なら直近の平日で代用）。`monitor.yml`の`git add`に`history_corrections.csv`を追加。
+- 移行: `scripts/migrate_history_asof.py`（dry-run既定）。`history.csv` 103→91行（付け替え90・統合10・空行の削除2）、`positions_history.csv` 79→78行、`peak.json` 9件の日付を付け替え。約定単価との一致 3/36 → 36/37（残る1件は7/7の手動行50162と約定50163の1円差）。付け替え後のTSLA・NVDAはYahoo Financeの日次終値と不一致0。
+- 検証: 単体テスト103件通過（新規 `test_history_store.py`・`test_migration.py`、`update_peak`の`as_of`、基準日の行を無視する前日比、チャートのマーカー位置）。Python 3.11の構文確認。作業コピーで移行を`--apply`して`monitor.py --dry-run`を2回実行し、行が増えない（べき等）・最高比・Tier・最高値が従来と同じことを確認。生成したページのデータで、Tracers・NASDAQ100・S&P500の約定マーカーが同じ日の価格の線と一致（価格＝約定単価）。
+- 未実施: リポジトリ本体への`--apply`・コミット・push・本番実行（利用者の承認待ち。D-5のTracers起点日修正・整理ノートの追記と同じコミットにまとめる）。

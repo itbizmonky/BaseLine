@@ -14,6 +14,8 @@ import csv
 import logging
 from pathlib import Path
 
+from history_store import upsert_rows
+
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -69,59 +71,15 @@ def load_history() -> list[dict]:
     return rows
 
 
-def _read_history_header() -> list[str]:
-    """history.csv の現在のヘッダ（列名）を返す。ファイルがなければ空リスト。"""
-    if not HISTORY_FILE.exists():
-        return []
-    with open(HISTORY_FILE, "r", encoding="utf-8", newline="") as f:
-        return next(csv.reader(f), [])
-
-
-def append_history(today_str: str, navs: dict) -> None:
+def append_history(navs_by_as_of: dict, fetched_on: str | None = None) -> None:
     """
-    今日のNAVを history.csv に追記する。
-    同日付がすでにある場合は上書きしない（べき等）。
-
-    navs に既存ヘッダにない銘柄（新規追加銘柄）が含まれる場合は、ヘッダに列を追加して
-    既存行を空欄で補完した上で追記する（列ずれを起こさないためのヘッダ移行）。
+    基準価額を history.csv に、**基準日をキーに**反映する（history_store.upsert_rows）。
+    navs_by_as_of: {基準日 'YYYY-MM-DD': {資産ID: 基準価額}}。
+    同じ基準日・同値の再実行（祝日・未更新の日）は何も変えない。値が異なる場合は上書きせず
+    data/history_corrections.csv に記録する。新しい資産は列を追加し、既存の行は空欄で補完する。
     """
-    DATA_DIR.mkdir(exist_ok=True)
-    existing = load_history()
-    existing_dates = {r["date"] for r in existing}
-
-    if today_str in existing_dates:
-        logger.info(f"history.csv: {today_str} はすでに存在するためスキップ")
-        return
-
-    header = _read_history_header()
-    fund_ids = [c for c in header if c != "date"]
-    for fund_id in navs:
-        if fund_id not in fund_ids:
-            fund_ids.append(fund_id)
-    fieldnames = ["date"] + fund_ids
-
-    if header and header != fieldnames:
-        with open(HISTORY_FILE, "r", encoding="utf-8", newline="") as f:
-            raw_rows = list(csv.DictReader(f))
-        with open(HISTORY_FILE, "w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
-            writer.writeheader()
-            writer.writerows(raw_rows)
-        logger.info(f"history.csv のヘッダを移行しました: {header} → {fieldnames}")
-
-    file_exists = HISTORY_FILE.exists()
-
-    with open(HISTORY_FILE, "a", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
-        if not file_exists:
-            writer.writeheader()
-        row = {"date": today_str}
-        for fund_id in fund_ids:
-            nav = navs.get(fund_id)
-            row[fund_id] = f"{nav:.0f}" if nav is not None else ""
-        writer.writerow(row)
-
-    logger.info(f"history.csv に {today_str} のデータを追記しました")
+    rows = {d: {fid: f"{v:.0f}" for fid, v in navs.items() if v is not None} for d, navs in navs_by_as_of.items()}
+    upsert_rows(HISTORY_FILE, rows, fetched_on)
 
 
 # ------------------------------------------------------------------
@@ -136,6 +94,7 @@ def update_peak(
     history: list[dict] | None = None,
     baseline: dict | None = None,
     extra_points: dict | None = None,
+    as_of: dict | None = None,
 ) -> tuple[dict, list[str]]:
     """
     各資産の設定来高値を更新する。
@@ -150,6 +109,9 @@ def update_peak(
     いる場合は補正する（履歴の欠落時に、唯一残っている基準日時点の実績値を取りこぼさないため。
     毎回無条件に確認するので、初回記録済み以降のデータ欠落にも自己修復的に対応できる）。
 
+    as_of: {資産ID: 価格の基準日 'YYYY-MM-DD'}。指定した資産は、起点日との比較・最高値の日付・初期値の算出に
+    today_str ではなく基準日を使う（最高値の日付が、実際にその価格だった日になる）。省略時は today_str。
+
     Returns:
         (updated_peak, updated_asset_ids)
     """
@@ -162,12 +124,13 @@ def update_peak(
         if nav is None:
             continue
         start = baseline_dates.get(asset_id, peak_start_date)
-        if today_str < start:
-            logger.info(f"{asset_id}: 今日 {today_str} は高値更新対象期間外 (起点: {start})")
+        day = (as_of or {}).get(asset_id, today_str)   # この価格の日付（基準日）
+        if day < start:
+            logger.info(f"{asset_id}: 基準日 {day} は高値更新対象期間外 (起点: {start})")
             continue
 
         if asset_id not in peak:
-            seed = seed_initial_peak(history or [], asset_id, start, nav, today_str, (extra_points or {}).get(asset_id))
+            seed = seed_initial_peak(history or [], asset_id, start, nav, day, (extra_points or {}).get(asset_id))
             peak[asset_id] = seed
             updated_ids.append(asset_id)
             logger.info(f"{asset_id}: 設定来高値を初期記録 {seed['value']:,.2f} ({seed['date']})")
@@ -180,7 +143,7 @@ def update_peak(
         if (
             baseline_date is not None
             and baseline_price is not None
-            and start <= baseline_date <= today_str
+            and start <= baseline_date <= day
             and baseline_price > current_peak
         ):
             peak[asset_id] = {"value": baseline_price, "date": baseline_date}
@@ -190,10 +153,10 @@ def update_peak(
             logger.info(f"{asset_id}: 基準日({baseline_date})価格{baseline_price:,.2f}が記録済み高値を上回るため補正")
 
         if nav > current_peak:
-            peak[asset_id] = {"value": nav, "date": today_str}
+            peak[asset_id] = {"value": nav, "date": day}
             if asset_id not in updated_ids:
                 updated_ids.append(asset_id)
-            logger.info(f"{asset_id}: 設定来高値を更新 {current_peak} → {nav} ({today_str})")
+            logger.info(f"{asset_id}: 設定来高値を更新 {current_peak} → {nav} ({day})")
 
     return peak, updated_ids
 

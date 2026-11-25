@@ -137,6 +137,19 @@ class CompactLayoutTest(unittest.TestCase):
             self.assertIn(f'id="{target}"', page)
 
 
+class ChartAlignmentTest(unittest.TestCase):
+    def test_purchase_marker_sits_on_the_label_of_its_execution_date(self):
+        from generate_dashboard import _build_chart_data
+        # 履歴の日付は価格の基準日。9/25の約定単価16,941円は、9/25の行の値と同じ位置に載る
+        history = [{"date": "2026-09-24", "tracers": 16775.0}, {"date": "2026-09-25", "tracers": 16941.0}, {"date": "2026-09-28", "tracers": 16949.0}]
+        purchases = {"tracers": [{"date": "2026-09-25", "price": 16941, "amount": 21765, "category": "追加買付"}]}
+        data = _build_chart_data(all_assets(SETTINGS), history, [], SETTINGS, {}, 159.0, purchases)
+        marker = data["purchase_markers"]["tracers"][0]
+        self.assertEqual(data["labels"][marker["index"]], "2026-09-25")
+        series = next(d for d in data["datasets"] if d["id"] == "tracers")["data"]
+        self.assertEqual(series[marker["index"]], marker["price"])
+
+
 class ChartScriptTest(unittest.TestCase):
     def test_chart_update_does_not_use_active_mode(self):
         # update('active') は全ての点をホバー状態（丸）で描画してしまう（タブ切替で丸が密集する不具合の原因）

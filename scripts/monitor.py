@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from assets import KIND_FUND, all_assets, stock_assets
 from fetch_nav import fetch_all_nav_quotes, load_settings
-from freshness import DEFAULT_MAX_LAG_WEEKDAYS, STATUS_STALE, classify_prices, short_date, to_date, usable_values
+from freshness import DEFAULT_MAX_LAG_WEEKDAYS, STATUS_STALE, classify_prices, prev_weekday, short_date, to_date, usable_values
 from market_data import (
     fetch_all_market_data, load_market, save_market, update_market,
     judge_vix_level, calc_direction,
@@ -188,13 +188,16 @@ def fetch_stocks(settings: dict, today_str: str, usdjpy: float | None, max_lag: 
         for sid, i in info.items():
             quotes[sid] = {
                 "value": i["value"],
-                "date": i["as_of"].isoformat() if i["as_of"] else today_str,
+                "date": (i["as_of"] or prev_weekday(today)).isoformat(),   # 取引日が不明なら直近の平日で代用
                 "stale": i["status"] == STATUS_STALE,
                 "status": i["status"],
             }
         fetched = {sid: q["value"] for sid, q in fetched_q.items() if q is not None}
         save_positions(update_positions(old_positions, fetched, today_str, {sid: q["as_of"] for sid, q in fetched_q.items() if q}))
-        append_positions_history(today_str, {**usable, "usdjpy": usdjpy}, [s["id"] for s in stocks] + ["usdjpy"])
+        by_as_of = {}
+        for sid, value in usable.items():
+            by_as_of.setdefault(quotes[sid]["date"], {})[sid] = value
+        append_positions_history(by_as_of, usdjpy, today_str)   # 取引日をキーに記録（休場日の再実行では行が増えない）
         logger.info(f"米国株: {fetched}（判定に使える: {usable}）")
     except Exception as e:
         # 米国株の取得失敗で投資信託のTier判定・通知が止まらないよう、例外を握りつぶす
@@ -245,6 +248,8 @@ def main(dry_run: bool = False) -> None:
     # 基準日が古い（stale）NAVは、最高値更新・Tier判定・履歴追記に使わない
     nav_info = classify_prices(nav_quotes, today, max_lag)
     usable_navs = usable_values(nav_info)
+    fallback_day = prev_weekday(today)   # 基準日が取れない場合の代用（直近の平日）
+    nav_as_of = {fid: (i["as_of"] or fallback_day).isoformat() for fid, i in nav_info.items() if i}
     for fid, i in nav_info.items():
         if i and i["status"] == "unknown":
             logger.warning(f"{fid}: 基準日を取得できませんでした（価格は使用します）")
@@ -284,8 +289,9 @@ def main(dry_run: bool = False) -> None:
         aid: [(m["date"], m["price"]) for m in purchase_markers(records)]
         for aid, records in purchases.items()
     }
+    price_as_of = {**nav_as_of, **{sid: quotes[sid]["date"] for sid in fresh_stocks}}   # 価格の基準日（最高値の日付に使う）
     peak, _ = update_peak(peak, {**usable_navs, **fresh_stocks}, today_str, peak_start,
-                          history + positions_history, baseline, extra_points)
+                          history + positions_history, baseline, extra_points, price_as_of)
 
     # ----------------------------------------------------------
     # 5. 全保有資産の下落率・Tier・平均取得単価比・（alert対象のみ）通知
@@ -299,7 +305,7 @@ def main(dry_run: bool = False) -> None:
         if asset["kind"] == KIND_FUND:
             price = navs.get(aid)
             info = nav_info.get(aid)
-            price_date = info["as_of"].isoformat() if info and info["as_of"] else today_str
+            price_date = nav_as_of.get(aid, today_str)
             stale = bool(info and info["status"] == STATUS_STALE)
             trend_rows = history
         else:
@@ -326,7 +332,7 @@ def main(dry_run: bool = False) -> None:
             "stale": stale,
             "peak_value": peak_val,
             "peak_date": peak_info.get("date"),
-            "day_change": None if stale else calc_day_change(trend_rows, aid, price, today_str),
+            "day_change": None if stale else calc_day_change(trend_rows, aid, price, price_date),
             "drawdown": None,
             "tier": 0,
             "avg_cost_ratio": None,
@@ -381,7 +387,10 @@ def main(dry_run: bool = False) -> None:
     save_triggered(triggered)
     logger.info("triggered.json を保存しました")
 
-    append_history(today_str, {fid: usable_navs.get(fid) for fid in navs})
+    nav_rows = {}
+    for fid, value in usable_navs.items():
+        nav_rows.setdefault(nav_as_of[fid], {})[fid] = value
+    append_history(nav_rows, today_str)   # 基準日をキーに記録（祝日・未更新の日の再実行では行が増えない）
 
     # ----------------------------------------------------------
     # 8. HTMLダッシュボード生成

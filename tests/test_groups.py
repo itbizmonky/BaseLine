@@ -1,3 +1,4 @@
+import copy
 import unittest
 
 try:
@@ -12,6 +13,24 @@ from portfolio import build_integrated_view
 
 SETTINGS = helpers.load_settings()
 IDS = [a["id"] for a in all_assets(SETTINGS)]
+
+
+def two_source_settings() -> dict:
+    """同じ銘柄（NASDAQ100）が原資枠とクレカ枠の両方にある積立設定（2026-11-26以前の構成）。枠分けの汎用ロジックの確認用。"""
+    s = copy.deepcopy(SETTINGS)
+    cash = s["monthly_schedule"]["cash"]
+    cash["phases"] = [p for p in cash["phases"] if p["from"] != "2027-01-23"]
+    card = s["monthly_schedule"]["card"]
+    last = max(card["phases"], key=lambda p: p["from"])
+    last["items"] = [
+        {"fund": "eMAXIS Slim 全世界株式（オルカン）", "fund_id": "orkan", "amount": 30000, "frame": "tsumitate"},
+        {"fund": "eMAXIS Slim 米国株式（S&P500）", "fund_id": "sp500", "amount": 10000, "frame": "tsumitate"},
+        {"fund": "NASDAQ100", "fund_id": "nasdaq100", "amount": 10000, "frame": "growth"},
+    ]
+    return s
+
+
+TWO_SOURCE = two_source_settings()
 
 # 口数（投資信託の評価額＝口数×価格/10000。価格10,000なら評価額＝口数）
 PURCHASES = {
@@ -39,8 +58,10 @@ def make_results(price=10000.0):
 
 
 class GroupsTest(unittest.TestCase):
+    """枠分けの汎用ロジック（同じ銘柄が2つの資金源にある構成で確認）。"""
+
     def setUp(self):
-        self.groups = {g["key"]: g for g in build_groups(SETTINGS, PURCHASES, make_results(), 150.0, "2026-11-24")}
+        self.groups = {g["key"]: g for g in build_groups(TWO_SOURCE, PURCHASES, make_results(), 150.0, "2026-11-24")}
 
     def ids(self, key):
         return [ln["asset_id"] for ln in self.groups[key]["lines"]]
@@ -49,7 +70,7 @@ class GroupsTest(unittest.TestCase):
         self.assertEqual(list(self.groups), ["cash", "card", "hold", "legacy", "child"])
 
     def test_membership_follows_latest_monthly_schedule(self):
-        self.assertEqual(schedule_amounts(SETTINGS, "cash"), {"nasdaq100": 30000, "tracers": 28824})
+        self.assertEqual(schedule_amounts(TWO_SOURCE, "cash"), {"nasdaq100": 30000, "tracers": 28824})
         self.assertEqual(self.ids("cash"), ["tracers", "nasdaq100"])
         self.assertEqual(self.ids("card"), ["sp500", "orkan", "nasdaq100"])
         self.assertEqual(self.ids("hold"), ["sbi_v_sp500", "sox", "nvda"])   # 保有のないテスラは出ない
@@ -101,10 +122,41 @@ class GroupsTest(unittest.TestCase):
         self.assertIsNone(groups["hold"]["share"])
 
 
+class CurrentScheduleTest(unittest.TestCase):
+    """現行の積立設定（2026-11-26に決定した配分。クレカ2027/1/10・現金2027/1/23発注分から）で枠分けが期待どおりになること。"""
+
+    def setUp(self):
+        self.groups = {g["key"]: g for g in build_groups(SETTINGS, PURCHASES, make_results(), 150.0, "2026-11-26")}
+
+    def test_membership_and_amounts(self):
+        self.assertEqual(schedule_amounts(SETTINGS, "cash"), {"nasdaq100": 40000, "tracers": 18824})
+        self.assertEqual(schedule_amounts(SETTINGS, "card"), {"orkan": 50000})
+        ids = lambda key: [ln["asset_id"] for ln in self.groups[key]["lines"]]
+        self.assertEqual(ids("cash"), ["tracers", "nasdaq100"])
+        self.assertEqual(ids("card"), ["orkan"])
+        self.assertIn("sp500", ids("hold"))                       # S&P500は新規積立を停止＝保持枠（保有は継続）
+        self.assertNotIn("sp500", ids("cash") + ids("card"))
+
+    def test_totals_are_unchanged_and_notes_show_start_dates(self):
+        self.assertEqual(self.groups["cash"]["monthly_total"], 58824)
+        self.assertEqual(self.groups["card"]["monthly_total"], 50000)
+        self.assertEqual(self.groups["cash"]["note"], "2027/1/23発注分からの設定")
+        self.assertEqual(self.groups["card"]["note"], "2027/1/10発注分からの設定")
+
+    def test_nasdaq100_is_a_single_group_fund_with_all_holdings(self):
+        line = {ln["asset_id"]: ln for ln in self.groups["cash"]["lines"]}["nasdaq100"]
+        self.assertEqual((line["units"], line["monthly"]), (400, 40000))   # 原資買付100＋カード積立300
+
+    def test_notes_disappear_once_the_schedule_has_started(self):
+        groups = {g["key"]: g for g in build_groups(SETTINGS, PURCHASES, make_results(), 150.0, "2027-01-24")}
+        self.assertIsNone(groups["cash"]["note"])
+        self.assertIsNone(groups["card"]["note"])
+
+
 class GroupedNotifyTest(unittest.TestCase):
     def setUp(self):
         self.results = make_results()
-        self.groups = build_groups(SETTINGS, PURCHASES, self.results, 150.0, "2026-11-24")
+        self.groups = build_groups(TWO_SOURCE, PURCHASES, self.results, 150.0, "2026-11-24")
 
     def test_text_has_group_headings_with_monthly_totals(self):
         msg = notify.build_daily_summary_message("2026-11-24", self.results, "https://example.com/", self.groups)

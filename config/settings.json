@@ -351,6 +351,26 @@
               "account_label": "NISA（成長）"
             }
           ]
+        },
+        {
+          "from": "2027-01-23",
+          "note": "2027/1/23発注分から（2026-11-26に積立配分を変更: クレカのNASDAQ100 10,000円を現金へ移し、Tracersを10,000円減額。現金の合計は58,824円で不変）",
+          "items": [
+            {
+              "fund": "NASDAQ100",
+              "fund_id": "nasdaq100",
+              "amount": 40000,
+              "frame": "growth",
+              "account_label": "NISA（成長）"
+            },
+            {
+              "fund": "Tracers",
+              "fund_id": "tracers",
+              "amount": 18824,
+              "frame": "growth",
+              "account_label": "NISA（成長）"
+            }
+          ]
         }
       ]
     },
@@ -415,28 +435,14 @@
         },
         {
           "from": "2027-01-10",
-          "note": "2027/1/10発注分から（SBIの積立設定画面。次回発注予定日が2027/1/10）",
+          "note": "2027/1/10発注分から（2026-11-26に積立配分を変更: S&P500の新規積立を停止し、クレカはオルカンに集約）",
           "items": [
             {
               "fund": "eMAXIS Slim 全世界株式（オルカン）",
               "fund_id": "orkan",
-              "amount": 30000,
+              "amount": 50000,
               "frame": "tsumitate",
               "account_label": "NISA（つみたて）"
-            },
-            {
-              "fund": "eMAXIS Slim 米国株式（S&P500）",
-              "fund_id": "sp500",
-              "amount": 10000,
-              "frame": "tsumitate",
-              "account_label": "NISA（つみたて）"
-            },
-            {
-              "fund": "NASDAQ100",
-              "fund_id": "nasdaq100",
-              "amount": 10000,
-              "frame": "growth",
-              "account_label": "NISA（成長）"
             }
           ]
         }
